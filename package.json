@@ -49,7 +49,7 @@
     "outdated": "pnpm outdated --long"
   },
   "dependencies": {
-    "@iconify-json/lucide": "^1.2.126",
+    "@iconify-json/lucide": "^1.2.136",
     "@nuxt/kit": "4.5.2",
     "@nuxt/schema": "4.5.2",
     "@vueuse/core": "^14.4.0",
