@@ -14,7 +14,7 @@
         "talred"
     ],
     "license": "Apache-2.0",
-    "homepage": "https://github.com/talredservices/zolta-identity",
+    "homepage": "https://github.com/talredservices/identity",
     "authors": [
         {
             "name": "Redouane Taleb",
@@ -23,8 +23,8 @@
         }
     ],
     "support": {
-        "issues": "https://github.com/talredservices/zolta-identity/issues",
-        "source": "https://github.com/talredservices/zolta-identity"
+        "issues": "https://github.com/talredservices/identity/issues",
+        "source": "https://github.com/talredservices/identity"
     },
     "require": {
         "php": "^8.3",

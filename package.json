@@ -9,13 +9,13 @@
     "name": "Redouane Taleb",
     "url": "https://github.com/redouaneT"
   },
-  "homepage": "https://github.com/talredservices/zolta-identity#readme",
+  "homepage": "https://github.com/talredservices/identity#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/talredservices/zolta-identity.git"
+    "url": "git+https://github.com/talredservices/identity.git"
   },
   "bugs": {
-    "url": "https://github.com/talredservices/zolta-identity/issues"
+    "url": "https://github.com/talredservices/identity/issues"
   },
   "keywords": [
     "identity-provider",

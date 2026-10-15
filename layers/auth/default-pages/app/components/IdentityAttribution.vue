@@ -28,7 +28,7 @@ defineProps<{
     </nav>
     <span v-else />
     <a
-      href="https://github.com/talredservices/zolta-identity"
+      href="https://github.com/talredservices/identity"
       target="_blank"
       rel="noopener noreferrer"
       class="identity-attribution-credit"

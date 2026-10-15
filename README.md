@@ -1,6 +1,6 @@
 # Talred Identity
 
-[![CI](https://github.com/talredservices/zolta-identity/actions/workflows/ci.yml/badge.svg)](https://github.com/talredservices/zolta-identity/actions/workflows/ci.yml)
+[![CI](https://github.com/talredservices/identity/actions/workflows/ci.yml/badge.svg)](https://github.com/talredservices/identity/actions/workflows/ci.yml)
 [![License: Apache--2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 Talred services include this open-source, standalone identity provider and administration console, presented as Talred Identity and maintained by [Redouane Taleb](https://github.com/redouaneT). It gives multiple applications a shared account system while keeping each application's business data and preferences independent.
@@ -74,8 +74,8 @@ session; the consumer application never receives those sensitive payloads.
 Clone the repository, then set up the Laravel API:
 
 ```bash
-git clone https://github.com/talredservices/zolta-identity.git
-cd zolta-identity
+git clone https://github.com/talredservices/identity.git
+cd identity
 ```
 
 ```bash
@@ -355,7 +355,7 @@ This repository is the Apache-2.0 licensed community core. It is free to use, mo
 
 ## Contributing and security
 
-Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and sign each contribution under the [Developer Certificate of Origin](DCO.md). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), never through a public issue. Source, issues, and releases are hosted in the [Talred repository](https://github.com/talredservices/zolta-identity).
+Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and sign each contribution under the [Developer Certificate of Origin](DCO.md). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), never through a public issue. Source, issues, and releases are hosted in the [Talred repository](https://github.com/talredservices/identity).
 
 ## License
 
