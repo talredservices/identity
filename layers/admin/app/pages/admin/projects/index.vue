@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
+import type { FormSubmitEvent, TableColumn } from '@nuxt/ui'
+import { z } from 'zod/v4'
 import type { IdentityProject } from '#admin/types/identity-access'
 
 definePageMeta({ layout: 'identity-admin', middleware: ['identity-admin'] })
@@ -8,6 +9,7 @@ const localePath = useLocalePath()
 const route = useRoute()
 const router = useRouter()
 const { projects: fetchProjects, createProject } = useIdentityAccess()
+const toast = useToast()
 const { data: projects, status, error, refresh } = await fetchProjects()
 const open = ref(false)
 const saving = ref(false)
@@ -25,6 +27,11 @@ const projectStatus = ref<'all' | IdentityProject['status']>(
 )
 const syncingRoute = ref(false)
 const form = reactive({ name: '', slug: '', description: '' })
+const projectFormSchema = z.object({
+  name: z.string().min(2, 'Enter a project name with at least 2 characters.').max(255, 'Project names can be at most 255 characters.'),
+  slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use lowercase letters and numbers separated by single hyphens.').max(100, 'Project slugs can be at most 100 characters.'),
+  description: z.string().max(2000, 'Descriptions can be at most 2000 characters.')
+})
 
 const scopedProjects = computed(() => (projects.value ?? []).filter((project) => {
   if (!includeDisabled.value && project.status !== 'active') return false
@@ -33,8 +40,7 @@ const scopedProjects = computed(() => (projects.value ?? []).filter((project) =>
 }))
 const collection = useIdentityCollection(scopedProjects, project => (
   `${project.name} ${project.slug} ${project.description ?? ''} ${project.status} ${project.mode}`
-))
-collection.search.value = queryValue('q') ?? ''
+), 10, queryValue('q') ?? '')
 const routePage = Number(queryValue('page'))
 if (Number.isInteger(routePage) && routePage > 0) collection.page.value = routePage
 
@@ -83,13 +89,33 @@ watch(() => route.query, async () => {
   syncingRoute.value = false
 })
 
-async function submit() {
+async function submit(event: FormSubmitEvent<z.output<typeof projectFormSchema>>) {
   saving.value = true
   try {
-    await createProject({ ...form, description: form.description || null })
+    await createProject({ ...event.data, description: event.data.description || null })
     Object.assign(form, { name: '', slug: '', description: '' })
     open.value = false
     await refresh()
+    toast.add({ title: 'Project created', color: 'success' })
+  } catch (error: unknown) {
+    const candidate = error as {
+      data?: {
+        message?: string
+        errors?: Record<string, string | string[]>
+      }
+    }
+    const validationMessage = Object.values(candidate.data?.errors ?? {})
+      .flatMap(messages => Array.isArray(messages) ? messages : [messages])
+      .find(Boolean)
+    const serverMessage = candidate.data?.message
+    const readableMessage = serverMessage && !/^\[(GET|POST|PUT|PATCH|DELETE)\]\s/.test(serverMessage)
+      ? serverMessage
+      : undefined
+    toast.add({
+      title: 'Unable to create project',
+      description: validationMessage ?? readableMessage ?? 'Review the project name and slug, then try again.',
+      color: 'error'
+    })
   } finally {
     saving.value = false
   }
@@ -305,11 +331,14 @@ async function submit() {
       description="A project isolates its clients, members, roles, and permissions."
     >
       <template #body>
-        <form
+        <UForm
+          :schema="projectFormSchema"
+          :state="form"
           class="space-y-4"
-          @submit.prevent="submit"
+          @submit="submit"
         >
           <UFormField
+            name="name"
             label="Name"
             required
           >
@@ -320,6 +349,7 @@ async function submit() {
             />
           </UFormField>
           <UFormField
+            name="slug"
             label="Slug"
             required
           >
@@ -328,7 +358,10 @@ async function submit() {
               class="w-full"
             />
           </UFormField>
-          <UFormField label="Description">
+          <UFormField
+            name="description"
+            label="Description"
+          >
             <UTextarea
               v-model="form.description"
               class="w-full"
@@ -336,6 +369,7 @@ async function submit() {
           </UFormField>
           <div class="flex justify-end gap-2">
             <UButton
+              type="button"
               label="Cancel"
               color="neutral"
               variant="ghost"
@@ -348,7 +382,7 @@ async function submit() {
               :loading="saving"
             />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
   </IdentityPanel>

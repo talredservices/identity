@@ -41,8 +41,7 @@ const scopedClients = computed(() => clientEntries.value.filter((entry) => {
 }))
 const collection = useIdentityCollection(scopedClients, entry => (
   `${entry.client.name} ${entry.client.secret_prefix} ${entry.project.name} ${entry.project.slug} ${entry.project.mode} ${entry.client.status} ${entry.applications.map(application => application.name).join(' ')}`
-))
-collection.search.value = queryValue('q') ?? ''
+), 10, queryValue('q') ?? '')
 const routePage = Number(queryValue('page'))
 if (Number.isInteger(routePage) && routePage > 0) collection.page.value = routePage
 
