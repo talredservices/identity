@@ -27,7 +27,7 @@ security() {
   ./scripts/check-dco.sh origin/main
   ./scripts/check-tracked-secrets.sh
   IDENTITY_ENV_FILE=.env.production.example docker compose --env-file .env.production.example config --quiet
-  pnpm audit --prod
+  pnpm run security:audit:js
   composer --working-dir=apps/identity-server audit --locked
 }
 
