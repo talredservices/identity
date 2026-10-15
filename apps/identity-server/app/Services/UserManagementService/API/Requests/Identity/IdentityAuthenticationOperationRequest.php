@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace App\Services\UserManagementService\API\Requests\Identity;
 
+use App\Services\UserManagementService\Domain\Enums\IdentitySensitiveOperation;
+use Illuminate\Validation\Rule;
+
 final class IdentityAuthenticationOperationRequest extends IdentityOperationRequest
 {
     private const AUTHENTICATED_OPERATIONS = [
+        'auth.reauthenticate',
+        'auth.account.password',
         'auth.me',
         'auth.sessions.index',
         'auth.sessions.revoke',
@@ -35,6 +40,24 @@ final class IdentityAuthenticationOperationRequest extends IdentityOperationRequ
     public function rules(): array
     {
         return match ($this->operation()) {
+            'auth.reauthenticate' => $this->clientRules([
+                'password' => ['required', 'string'],
+                'sensitive_operation' => ['required', Rule::enum(IdentitySensitiveOperation::class)],
+            ]),
+            'auth.account.password' => ['password' => ['required', 'string', 'min:12', 'confirmed']],
+            'auth.google.start' => $this->clientRules([
+                'sensitive_operation' => ['nullable', Rule::enum(IdentitySensitiveOperation::class)],
+                'application_key' => ['required', 'string', 'max:100'],
+                'redirect_uri' => ['required', 'url:http,https', 'max:2048'],
+                'state' => ['required', 'string', 'min:32', 'max:180', 'regex:/^[A-Za-z0-9_-]+$/'],
+                'terms_accepted' => ['sometimes', 'boolean'],
+                'policy_revision' => ['nullable', 'string', 'max:128'],
+            ]),
+            'auth.google.callback' => [
+                'state' => ['required', 'string', 'size:64'],
+                'code' => ['required_without:error', 'string', 'max:4096'],
+                'error' => ['sometimes', 'string', 'max:255'],
+            ],
             'auth.context' => $this->clientRules(['project' => ['nullable', 'string', 'max:255']]),
             'auth.login' => $this->clientRules([
                 'project' => ['nullable', 'string', 'max:255'],
@@ -43,6 +66,9 @@ final class IdentityAuthenticationOperationRequest extends IdentityOperationRequ
             ]),
             'auth.register' => $this->clientRules([
                 'project' => ['nullable', 'string', 'max:255'],
+                'application_key' => ['sometimes', 'string', 'max:100'],
+                'terms_accepted' => ['sometimes', 'boolean'],
+                'policy_revision' => ['nullable', 'string', 'max:128'],
                 'username' => ['required', 'string', 'min:2', 'max:100'],
                 'email' => ['required', 'email', 'max:255'],
                 'password' => ['required', 'string', 'min:12', 'confirmed'],

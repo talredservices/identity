@@ -12,6 +12,9 @@ interface ManageIdentityClients
     /** @return array<string, mixed> */
     public function rotateClientSecret(string $actorUserId, string $projectId, string $clientId): array;
 
+    /** @return array<string, mixed> */
+    public function renameClient(string $actorUserId, string $projectId, string $clientId, string $name): array;
+
     public function setClientStatus(string $actorUserId, string $projectId, string $clientId, string $status): void;
 
     public function deleteClient(string $actorUserId, string $projectId, string $clientId, string $confirmation): void;

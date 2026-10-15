@@ -7,4 +7,27 @@ apps/identity-server/vendor
 apps/identity-server/.env
 .env
 .env.production
+/.identity-owner.credentials
 *.log
+
+# Never include credentials, runtime data, or local dependency stores in releases.
+**/.env*
+**/*.sqlite
+**/*.db
+**/.pnpm-store
+**/node_modules
+**/.nuxt
+**/.output
+**/storage
+apps/identity-server/storage/app
+apps/identity-server/storage/framework
+apps/identity-server/storage/logs
+apps/identity-server/bootstrap/cache/*
+apps/identity-server/public/storage
+
+.local-release
+.zolta
+.agents
+**/.claude
+**/.agents
+**/.ai

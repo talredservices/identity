@@ -1,6 +1,7 @@
 name: Security
 
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
@@ -14,7 +15,7 @@ jobs:
   tracked-files:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - run: ./scripts/check-tracked-secrets.sh
@@ -23,17 +24,17 @@ jobs:
   dependency-audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --prod
-      - uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45 # v2
+      - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
           tools: composer:v2
       - run: composer --working-dir=apps/identity-server install --prefer-dist --no-interaction --no-progress
-      - run: composer --working-dir=apps/identity-server audit --locked
+      - run: composer --working-dir=apps/identity-server audit

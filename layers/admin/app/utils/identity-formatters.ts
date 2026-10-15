@@ -3,6 +3,7 @@ export function formatIdentityDate(value: string | null | undefined) {
 
   return new Intl.DateTimeFormat('en', {
     dateStyle: 'medium',
-    timeStyle: 'short'
-  }).format(new Date(value))
+    timeStyle: 'short',
+    timeZone: 'UTC'
+  }).format(new Date(value)) + ' UTC'
 }

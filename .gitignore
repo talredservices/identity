@@ -21,7 +21,16 @@ test-results
 .DS_Store
 .fleet
 .idea
-.vscode
+.vscode/*
+!.vscode/settings.json
 .eslintcache
 
 /.pnpm-store/
+
+# Workspace-local agent configuration
+.agents/
+.mcp.json
+.zolta/
+
+/.local-release/
+/.identity-owner.credentials

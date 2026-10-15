@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+output="${1:-$root/.local-release/identity.env}"
+revision="$(git -C "$root" rev-parse HEAD)"
+# Include working source changes; local artifacts are identified by image ID,
+# never advertised as a published Git revision or registry digest.
+version="local-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$(dirname "$output")"
+for component in server nginx console; do
+  case "$component" in
+    server) dockerfile=docker/identity-server/Dockerfile ;;
+    nginx) dockerfile=docker/identity-server/nginx.Dockerfile ;;
+    console) dockerfile=docker/identity-console/Dockerfile ;;
+  esac
+  docker build --label "org.opencontainers.image.revision=$revision" \
+    --label "com.talred.release.kind=local-working-tree" \
+    -t "talred-identity-local/$component:$version" -f "$root/$dockerfile" "$root"
+done
+release_tmp="$(mktemp "$(dirname "$output")/.identity-release.XXXXXX")"
+trap 'rm -f "$release_tmp"' EXIT
+{
+  printf '# Local content-addressed Identity release; not a published registry release.\n'
+  printf 'TALRED_IDENTITY_RELEASE=%s\n' "$version"
+  for component in server nginx console; do
+    identifier="$(docker image inspect --format '{{.Id}}' "talred-identity-local/$component:$version")"
+    printf 'TALRED_IDENTITY_%s_IMAGE=%s\n' "$(printf '%s' "$component" | tr '[:lower:]' '[:upper:]')" "$identifier"
+  done
+} > "$release_tmp"
+chmod 600 "$release_tmp"
+mv "$release_tmp" "$output"
+printf 'Pinned local Identity release written to %s\n' "$output"

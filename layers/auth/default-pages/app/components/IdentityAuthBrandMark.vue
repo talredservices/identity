@@ -1,17 +1,26 @@
 <script setup lang="ts">
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   logoUrl?: string | null
+  accentColor?: string | null
   size?: 'header' | 'compact' | 'form'
 }>(), {
   logoUrl: null,
+  accentColor: null,
   size: 'form'
 })
+
+const brandMarkColor = computed(() =>
+  /^#[\da-f]{6}$/i.test(props.accentColor ?? '') ? props.accentColor! : '#16937d'
+)
 </script>
 
 <template>
   <span
     class="identity-auth-brand-mark"
-    :class="`identity-auth-brand-mark--${size}`"
+    :class="[
+      `identity-auth-brand-mark--${size}`,
+      { 'identity-auth-brand-mark--custom': logoUrl }
+    ]"
     aria-hidden="true"
   >
     <img
@@ -19,10 +28,10 @@ withDefaults(defineProps<{
       :src="logoUrl"
       alt=""
     >
-    <UIcon
+    <span
       v-else
-      name="i-lucide-app-window"
-      class="identity-auth-brand-mark-icon"
+      class="identity-auth-brand-mark-image"
+      :style="{ '--identity-auth-brand-mark-color': brandMarkColor }"
     />
   </span>
 </template>
@@ -30,13 +39,16 @@ withDefaults(defineProps<{
 <style scoped>
 .identity-auth-brand-mark {
   align-items: center;
-  background: var(--ui-color-primary-500);
-  border-radius: 9999px;
   box-sizing: border-box;
-  color: #fff;
   display: inline-flex;
   flex: none;
   justify-content: center;
+}
+
+.identity-auth-brand-mark--custom {
+  background: var(--ui-color-primary-500);
+  border-radius: 9999px;
+  color: #fff;
   overflow: hidden;
 }
 
@@ -55,7 +67,7 @@ withDefaults(defineProps<{
   width: 2.75rem;
 }
 
-.identity-auth-brand-mark img {
+.identity-auth-brand-mark--custom img {
   border-radius: inherit;
   display: block;
   height: 100%;
@@ -63,8 +75,12 @@ withDefaults(defineProps<{
   width: 100%;
 }
 
-.identity-auth-brand-mark-icon {
-  height: 1.25rem;
-  width: 1.25rem;
+.identity-auth-brand-mark-image {
+  background-color: var(--identity-auth-brand-mark-color);
+  display: block;
+  height: 100%;
+  mask: url('../assets/branding/talred-mark.svg') center / contain no-repeat;
+  -webkit-mask: url('../assets/branding/talred-mark.svg') center / contain no-repeat;
+  width: 100%;
 }
 </style>

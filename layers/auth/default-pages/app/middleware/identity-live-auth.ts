@@ -1,5 +1,4 @@
 import type { IdentityAuthenticationExperience } from '../../../shared/types/identity-auth'
-import { identityAuthPagePath } from '../utils/identity-auth-page'
 
 type HostedApplicationMetadata = {
   application: {
@@ -16,6 +15,14 @@ function isUnauthorized(error: unknown): boolean {
 function hostedAuthRestartAction(path: string): string {
   const screen = path.split('/').filter(Boolean).at(-1)
   return screen === 'register' ? 'signup' : screen === 'forgot-password' ? 'forgot-password' : 'login'
+}
+
+function identityAuthPageSetFromRoute(path: string, routePageSet: unknown): string {
+  const configuredPageSet = identityAuthPageSet(routePageSet)
+  if (configuredPageSet !== 'default') return configuredPageSet
+
+  const match = path.match(/^\/auth\/([^/]+)\/(?:login|register|forgot-password|reset-password|verify-email)$/)
+  return match ? identityAuthPageSet(match[1]) : configuredPageSet
 }
 
 async function restartHostedAuthorization(
@@ -39,6 +46,7 @@ async function restartHostedAuthorization(
 
 export default defineNuxtRouteMiddleware(async (to) => {
   const requestFetch = useRequestFetch()
+  const pageSet = identityAuthPageSetFromRoute(to.path, to.params.pageSet)
   const application = typeof to.query.application === 'string' ? to.query.application : ''
   const state = typeof to.query.state === 'string' ? to.query.state : ''
   const intent = typeof to.query.intent === 'string' ? to.query.intent : ''
@@ -85,14 +93,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
     throw error
   }
 
-  const pageSet = experience.application?.authPageSet ?? to.params.pageSet
-
   if (experience.primary.project.mode !== 'live') {
     return navigateTo(identityAuthPagePath('login', pageSet, application ? to.query : {}))
   }
 
   if (
-    to.path.endsWith('/auth/register')
+    to.path.endsWith('/register')
     && experience.primary.project.registration_mode !== 'public'
   ) {
     return navigateTo(identityAuthPagePath('login', pageSet, application ? to.query : {}))

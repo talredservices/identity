@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import * as z from 'zod/v4'
 import type { FormSubmitEvent } from '@nuxt/ui'
+import type { IdentityHostedApplicationMetadata } from '../../../../shared/types/identity-auth'
 import { useIdentityMutation } from '../../../../app/composables/useIdentityMutation'
 
 definePageMeta({
@@ -13,9 +14,45 @@ const toast = useToast()
 const { resetPassword } = useIdentityAuth()
 const mutateIdentity = useIdentityMutation()
 const hostedClientId = computed(() => typeof route.query.client_id === 'string' ? route.query.client_id : '')
+const hostedApplication = computed(() => typeof route.query.application === 'string' ? route.query.application : '')
+const hostedState = computed(() => typeof route.query.state === 'string' ? route.query.state : '')
+const { data: hostedMetadata } = await useFetch<{ application: IdentityHostedApplicationMetadata }>(
+  '/api/hosted-auth/application',
+  {
+    query: computed(() => ({ clientId: hostedClientId.value })),
+    immediate: computed(() => z.uuid().safeParse(hostedClientId.value).success)
+  }
+)
+const hasTokenFromLink = computed(() => typeof route.query.token === 'string' && route.query.token.length >= 64 && route.query.token.length <= 512)
+const hasEmailFromLink = computed(() => typeof route.query.email === 'string' && z.email().max(254).safeParse(route.query.email).success)
+const signInPath = computed(() => identityAuthPagePath('login', route.params.pageSet,
+  hostedApplication.value && hostedState.value
+    ? { application: hostedApplication.value, state: hostedState.value }
+    : {}
+))
+const applicationSignInUrl = computed(() => {
+  const returnUrl = hostedMetadata.value?.application.returnUrl
+  if (!returnUrl) return ''
+
+  try {
+    const target = new URL(returnUrl)
+    if (!['http:', 'https:'].includes(target.protocol)) return ''
+    target.pathname = `${target.pathname.replace(/\/$/, '')}/auth/login`
+    target.search = ''
+    target.hash = ''
+    return target.toString()
+  } catch {
+    return ''
+  }
+})
+const signInTarget = computed(() => hostedApplication.value && hostedState.value
+  ? signInPath.value
+  : applicationSignInUrl.value || applicationUrl.value || signInPath.value
+)
+const externalSignIn = computed(() => typeof signInTarget.value === 'string')
 const schema = z.object({
-  email: z.email('Enter a valid email address.'),
-  token: z.string().min(64, 'Enter the reset token.'),
+  email: z.email('Enter a valid email address.').max(254, 'Enter a valid email address.'),
+  token: z.preprocess(value => hasTokenFromLink.value ? route.query.token : value, z.string().min(64, 'Open the reset link from your email.').max(512, 'This reset link is invalid.')),
   password: z.string().min(12, 'Use at least 12 characters.'),
   passwordConfirmation: z.string().min(12, 'Confirm your password.')
 }).refine(data => data.password === data.passwordConfirmation, {
@@ -23,38 +60,38 @@ const schema = z.object({
   path: ['passwordConfirmation']
 })
 type ResetPasswordSchema = z.output<typeof schema>
-const fields = [
-  { name: 'email', type: 'email' as const, label: 'Email', placeholder: 'you@example.com', required: true, autocomplete: 'email', defaultValue: typeof route.query.email === 'string' ? route.query.email : '' },
-  { name: 'token', type: 'text' as const, label: 'Reset token', placeholder: 'Paste the token from your email', required: true, autocomplete: 'one-time-code', defaultValue: typeof route.query.token === 'string' ? route.query.token : '' },
-  { name: 'password', type: 'password' as const, label: 'New password', placeholder: 'At least 12 characters', required: true, autocomplete: 'new-password' },
+const fields = computed(() => [
+  { name: 'email', type: 'email' as const, label: 'Email', placeholder: 'you@example.com', required: true, readonly: hasEmailFromLink.value, autofocus: !hasEmailFromLink.value, maxlength: 254, autocomplete: 'email', defaultValue: typeof route.query.email === 'string' ? route.query.email : '' },
+  ...(hasTokenFromLink.value ? [] : [{ name: 'token', type: 'text' as const, label: 'Reset token', description: 'Paste the token from your email.', placeholder: 'Paste the token from your email', required: true, maxlength: 512, autocomplete: 'one-time-code', defaultValue: typeof route.query.token === 'string' ? route.query.token : '' }]),
+  { name: 'password', type: 'password' as const, label: 'New password', description: 'Use at least 12 characters.', autofocus: hasEmailFromLink.value && hasTokenFromLink.value, placeholder: 'At least 12 characters', required: true, autocomplete: 'new-password' },
   { name: 'passwordConfirmation', type: 'password' as const, label: 'Confirm password', placeholder: 'Repeat your password', required: true, autocomplete: 'new-password' }
-]
+])
 const pending = ref(false)
 const successMessage = ref('')
+const errorMessage = ref('')
 const applicationUrl = ref('')
 
 async function submit({ data }: FormSubmitEvent<ResetPasswordSchema>) {
+  if (pending.value || successMessage.value) return
   pending.value = true
-  successMessage.value = ''
+  errorMessage.value = ''
 
   try {
     if (hostedClientId.value) {
-      const result = await mutateIdentity<{ applicationUrl: string }>('/api/hosted-auth/password/reset', {
+      const result = await mutateIdentity<{ applicationUrl?: string }>('/api/hosted-auth/password/reset', {
         method: 'POST',
         body: { clientId: hostedClientId.value, ...data }
       })
-      applicationUrl.value = result.applicationUrl
+      applicationUrl.value = result.applicationUrl ?? ''
     } else {
       await resetPassword(data)
     }
     successMessage.value = 'Your password has been reset. You can now sign in.'
   } catch (error) {
+    errorMessage.value = identityAuthErrorMessage(error, 'We could not reset your password. Request a new link if this one has expired.')
     toast.add({
       title: 'Unable to reset your password',
-      description: identityAuthErrorMessage(
-        error,
-        'We could not reset your password.'
-      ),
+      description: errorMessage.value,
       color: 'error'
     })
   } finally {
@@ -64,44 +101,68 @@ async function submit({ data }: FormSubmitEvent<ResetPasswordSchema>) {
 </script>
 
 <template>
-  <UAuthForm
-    class="identity-auth-form-shell"
-    :fields="fields"
-    :schema="schema"
-    :validate-on="['input']"
-    title="Choose a new password"
-    description="Enter the reset token and a new password."
-    icon="i-lucide-lock-keyhole"
-    :submit="{ label: 'Reset password', loading: pending }"
-    @submit="submit"
-  >
-    <template #header>
+  <div class="identity-auth-form-stack">
+    <div
+      v-if="successMessage"
+      class="identity-auth-form-shell space-y-6"
+    >
       <IdentityAuthFormHeader
-        title="Choose a new password"
-        description="Enter the reset token and a new password."
+        title="Password updated"
+        description="Sign in with your new password to continue."
       />
-    </template>
-    <template #validation>
-      <p
-        v-if="successMessage"
+      <UAlert
         class="identity-auth-success"
+        color="success"
+        variant="soft"
+        icon="i-lucide-check-circle-2"
+        title="Password reset complete"
+        :description="successMessage"
+        role="status"
+        aria-live="polite"
+        :ui="{ title: 'text-inherit font-semibold', description: 'text-inherit', icon: 'text-inherit' }"
+      />
+      <UButton
+        :to="signInTarget"
+        :external="externalSignIn"
+        block
+        trailing-icon="i-lucide-arrow-right"
       >
-        {{ successMessage }}
-      </p>
-    </template>
-    <template #footer>
-      <a
-        v-if="applicationUrl"
-        :href="applicationUrl"
-      >
-        Return to your application
-      </a>
-      <NuxtLink
-        v-else
-        :to="identityAuthPagePath('login', route.params.pageSet)"
-      >
-        Continue to sign in
-      </NuxtLink>
-    </template>
-  </UAuthForm>
+        Sign in
+      </UButton>
+    </div>
+    <UAuthForm
+      v-else
+      class="identity-auth-form-shell"
+      :fields="fields"
+      :schema="schema"
+      :validate-on="['input']"
+      title="Choose a new password"
+      description="Set a new password to secure your account."
+      :submit="{ label: 'Reset password', loading: pending }"
+      @submit="submit"
+    >
+      <template #header>
+        <IdentityAuthFormHeader
+          title="Choose a new password"
+          description="Set a new password to secure your account."
+        />
+      </template>
+      <template #validation>
+        <UAlert
+          v-if="errorMessage"
+          color="error"
+          title="Password not changed"
+          :description="errorMessage"
+          role="alert"
+        />
+      </template>
+      <template #footer>
+        <NuxtLink
+          :to="signInTarget"
+          :external="externalSignIn"
+          class="identity-auth-return-link"
+        >Back to sign in</NuxtLink>
+      </template>
+    </UAuthForm>
+  </div>
 </template>

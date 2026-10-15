@@ -10,12 +10,14 @@ const props = withDefaults(defineProps<{
   backTo?: string
   backLabel?: string
   bodyClass?: string
+  containerClass?: string
 }>(), {
   description: undefined,
   icon: undefined,
   backTo: undefined,
   backLabel: undefined,
-  bodyClass: 'mx-auto flex w-full max-w-7xl flex-col gap-6'
+  bodyClass: 'mx-auto flex w-full max-w-[1600px] flex-col gap-6',
+  containerClass: 'max-w-none'
 })
 
 const resolvedBackLabel = computed(() => {
@@ -31,12 +33,17 @@ const resolvedBackLabel = computed(() => {
           <div class="flex min-w-0 items-center gap-2">
             <UTooltip :text="t('identityConsole.toggleSidebar')">
               <UDashboardSidebarCollapse
-                class="hidden lg:inline-flex"
+                class="hidden size-6 shrink-0 p-0 lg:inline-flex"
                 :aria-label="t('identityConsole.toggleSidebar')"
               />
             </UTooltip>
 
+            <slot
+              v-if="$slots.title"
+              name="title"
+            />
             <PageTitle
+              v-else
               :title="props.title"
               :icon="props.icon"
             />
@@ -66,7 +73,7 @@ const resolvedBackLabel = computed(() => {
     </template>
 
     <template #body>
-      <UContainer class="w-full py-6 sm:py-8">
+      <UContainer :class="['w-full py-6 sm:py-8', props.containerClass]">
         <div :class="props.bodyClass">
           <div
             v-if="props.description"

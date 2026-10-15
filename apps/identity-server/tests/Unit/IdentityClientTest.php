@@ -16,7 +16,7 @@ final class IdentityClientTest extends TestCase
     {
         $client = IdentityClient::create(
             new IdentityProjectId,
-            'Job Tracker BFF',
+            'Example Application BFF',
             hash('sha256', 'initial-secret'),
             'initial-',
         );
@@ -34,6 +34,6 @@ final class IdentityClientTest extends TestCase
     {
         $this->expectException(InvalidIdentityClientConfigurationException::class);
 
-        IdentityClient::create(new IdentityProjectId, 'Job Tracker BFF', 'not-a-hash', 'prefix');
+        IdentityClient::create(new IdentityProjectId, 'Example Application BFF', 'not-a-hash', 'prefix');
     }
 }

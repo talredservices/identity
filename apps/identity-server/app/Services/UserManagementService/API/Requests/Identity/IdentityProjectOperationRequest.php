@@ -8,6 +8,23 @@ use Illuminate\Validation\Rule;
 
 final class IdentityProjectOperationRequest extends IdentityOperationRequest
 {
+    protected function operation(): string
+    {
+        return str_replace('projects.applications.', 'projects.hosted_applications.', parent::operation());
+    }
+
+    public function trustedData(): array
+    {
+        $data = parent::trustedData();
+        $routeName = (string) $this->route()?->getName();
+        if (str_starts_with($routeName, 'identity.projects.applications.')) {
+            $data['input']['authentication_mode'] = 'hosted';
+            $data['input']['password_reset_url'] = null;
+        }
+
+        return $data;
+    }
+
     public function authorize(): bool
     {
         return $this->hasAuthenticatedIdentity();
@@ -66,6 +83,7 @@ final class IdentityProjectOperationRequest extends IdentityOperationRequest
                 'status' => ['required', Rule::in(['active', 'disabled'])],
             ],
             'projects.clients.store' => ['name' => ['required', 'string', 'max:255']],
+            'projects.clients.name' => ['name' => ['required', 'string', 'max:255']],
             'projects.clients.status' => ['status' => ['required', Rule::in(['active', 'disabled'])]],
             'projects.clients.destroy' => ['confirmation' => ['required', 'string', 'max:255']],
             'projects.clients.manifest' => $this->manifestRules(),
@@ -76,6 +94,9 @@ final class IdentityProjectOperationRequest extends IdentityOperationRequest
                 'sandbox_client_id' => ['nullable', 'uuid'],
                 'application_url' => ['required', 'url:http,https', 'max:2048'],
                 'callback_url' => ['required', 'url:http,https', 'max:2048'],
+                'authentication_mode' => ['sometimes', Rule::in(['hosted', 'app'])],
+                'password_reset_url' => ['nullable', 'url:http,https', 'max:2048'],
+                'policy_revision' => ['nullable', 'string', 'max:128'],
                 'auth_page_set' => ['sometimes', 'string', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', 'max:100'],
                 ...$this->hostedApplicationAppearanceRules(),
                 ...$this->hostedApplicationAuthenticationRules(),
@@ -86,6 +107,9 @@ final class IdentityProjectOperationRequest extends IdentityOperationRequest
                 'sandbox_client_id' => ['nullable', 'uuid'],
                 'application_url' => ['required', 'url:http,https', 'max:2048'],
                 'callback_url' => ['required', 'url:http,https', 'max:2048'],
+                'authentication_mode' => ['sometimes', Rule::in(['hosted', 'app'])],
+                'password_reset_url' => ['nullable', 'url:http,https', 'max:2048'],
+                'policy_revision' => ['nullable', 'string', 'max:128'],
                 'auth_page_set' => ['sometimes', 'string', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', 'max:100'],
                 'status' => ['required', Rule::in(['active', 'disabled'])],
                 ...$this->hostedApplicationAppearanceRules(),
@@ -161,7 +185,7 @@ final class IdentityProjectOperationRequest extends IdentityOperationRequest
             'authentication' => ['sometimes', 'array'],
             'authentication.google_enabled' => ['nullable', 'boolean'],
             'authentication.terms_required' => ['nullable', 'boolean'],
-            'authentication.terms_url' => ['nullable', 'required_if:authentication.terms_required,true', 'url:http,https', 'max:2048'],
+            'authentication.terms_url' => ['nullable', 'url:http,https', 'max:2048'],
             'authentication.privacy_url' => ['nullable', 'url:http,https', 'max:2048'],
         ];
     }

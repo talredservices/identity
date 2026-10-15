@@ -100,7 +100,7 @@ async function submit() {
   <IdentityPanel
     panel-id="identity-projects"
     title="Projects"
-    icon="i-lucide-layout-dashboard"
+    icon="i-lucide-folder-key"
     description="Manage the applications, environments, and access boundaries that trust this identity installation."
   >
     <IdentityShellState
@@ -169,7 +169,7 @@ async function submit() {
           :data="collection.paginatedItems.value"
           :columns="columns"
           empty="No projects match the current filters."
-          class="min-w-4xl"
+          class="hidden min-w-4xl md:block"
           :ui="{
             thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
             tbody: '[&>tr]:last:[&>td]:border-b-0',
@@ -225,6 +225,62 @@ async function submit() {
             </div>
           </template>
         </UTable>
+
+        <div class="divide-y divide-default md:hidden">
+          <article
+            v-for="project in collection.paginatedItems.value"
+            :key="project.id"
+            class="space-y-3 p-4"
+          >
+            <div class="flex min-w-0 items-start justify-between gap-3">
+              <div class="min-w-0">
+                <NuxtLink
+                  :to="localePath(`/admin/projects/${project.id}`)"
+                  class="break-words font-medium text-highlighted hover:text-primary"
+                >
+                  {{ project.name }}
+                </NuxtLink>
+                <p class="mt-1 break-words text-xs text-muted">
+                  {{ project.description || project.slug }}
+                </p>
+              </div>
+              <UBadge
+                :color="project.status === 'active' ? 'success' : project.status === 'pending_deletion' ? 'error' : 'warning'"
+                variant="soft"
+                class="shrink-0 capitalize"
+              >
+                {{ project.status.replace('_', ' ') }}
+              </UBadge>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 text-sm">
+              <UBadge
+                :color="project.mode === 'live' ? 'success' : 'warning'"
+                variant="soft"
+                class="capitalize"
+              >
+                {{ project.mode }}
+              </UBadge>
+              <span class="text-muted">
+                {{ project.registration_mode === 'public' ? 'Public registration' : 'Invite only' }}
+              </span>
+            </div>
+            <div class="flex justify-end border-t border-default pt-2">
+              <UButton
+                label="Manage project"
+                icon="i-lucide-arrow-up-right"
+                color="neutral"
+                variant="ghost"
+                :to="localePath(`/admin/projects/${project.id}`)"
+              />
+            </div>
+          </article>
+          <p
+            v-if="!collection.paginatedItems.value.length"
+            class="p-4 text-sm text-muted"
+          >
+            No projects match the current filters.
+          </p>
+        </div>
 
         <template
           v-if="collection.total.value > collection.pageSize"

@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Services\UserManagementService\API\Controllers\Identity;
 
 use App\Services\UserManagementService\API\Requests\Identity\IdentityAuthenticationOperationRequest;
+use App\Services\UserManagementService\API\Services\CompleteIdentityGoogleCallback;
 use App\Services\UserManagementService\Application\DTOs\Input\IdentityOperationDTO;
 use App\Services\UserManagementService\Application\Services\Identity\ExecuteIdentityAuthenticationService;
+use App\Services\UserManagementService\Application\Services\Identity\ExecuteIdentityGoogleAuthorizationService;
 use App\Services\UserManagementService\Application\Services\Identity\ReadIdentityAuthenticationService;
 use Zolta\Http\Controller\Controller;
 use Zolta\Http\Request\Attributes\Request as RequestAttribute;
@@ -15,6 +17,26 @@ use Zolta\Http\Service\Attributes\Service;
 
 final class IdentityAuthenticationController extends Controller
 {
+    #[Route('v1/identity/auth/reauthenticate', methods: ['POST'], middleware: ['api', 'auth:sanctum', 'identity.token', 'throttle:5,1'], name: 'identity.auth.reauthenticate')]
+    #[RequestAttribute(IdentityAuthenticationOperationRequest::class, IdentityOperationDTO::class)]
+    #[Service(ExecuteIdentityAuthenticationService::class, 'Fresh authentication completed.')]
+    public function reauthenticate(): void {}
+
+    #[Route('v1/identity/auth/account/password', methods: ['PUT'], middleware: ['api', 'auth:sanctum', 'identity.token', 'throttle:5,1', 'identity.reauthenticate:password'], name: 'identity.auth.account.password')]
+    #[RequestAttribute(IdentityAuthenticationOperationRequest::class, IdentityOperationDTO::class)]
+    #[Service(ExecuteIdentityAuthenticationService::class, 'Password changed.')]
+    public function changePassword(): void {}
+
+    #[Route('v1/identity/auth/google/authorize', methods: ['POST'], middleware: ['api', 'throttle:20,1'], name: 'identity.auth.google.start')]
+    #[RequestAttribute(IdentityAuthenticationOperationRequest::class, IdentityOperationDTO::class)]
+    #[Service(ExecuteIdentityGoogleAuthorizationService::class, 'Google authorization started.')]
+    public function googleStart(): void {}
+
+    #[Route('v1/identity/auth/google/callback', methods: ['GET'], middleware: ['api', 'throttle:60,1'], name: 'identity.auth.google.callback')]
+    #[RequestAttribute(IdentityAuthenticationOperationRequest::class, IdentityOperationDTO::class)]
+    #[Service(CompleteIdentityGoogleCallback::class)]
+    public function googleCallback(): void {}
+
     #[Route('v1/identity/auth/context', methods: ['POST'], middleware: ['api', 'throttle:120,1'], name: 'identity.auth.context')]
     #[RequestAttribute(IdentityAuthenticationOperationRequest::class, IdentityOperationDTO::class)]
     #[Service(ReadIdentityAuthenticationService::class, 'Authentication context resolved.')]

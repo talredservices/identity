@@ -1,6 +1,6 @@
 {
   "$schema": "https://www.schemastore.org/package.json",
-  "name": "@zoltasoft/identity",
+  "name": "@talred/identity",
   "description": "Standalone multi-project identity provider and administration console built with Nuxt and Laravel.",
   "type": "module",
   "private": true,
@@ -9,13 +9,13 @@
     "name": "Redouane Taleb",
     "url": "https://github.com/redouaneT"
   },
-  "homepage": "https://github.com/zoltasoft/zolta-identity#readme",
+  "homepage": "https://github.com/talredservices/zolta-identity#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zoltasoft/zolta-identity.git"
+    "url": "git+https://github.com/talredservices/zolta-identity.git"
   },
   "bugs": {
-    "url": "https://github.com/zoltasoft/zolta-identity/issues"
+    "url": "https://github.com/talredservices/zolta-identity/issues"
   },
   "keywords": [
     "identity-provider",
@@ -23,7 +23,7 @@
     "nuxt",
     "rbac",
     "sanctum",
-    "zolta"
+    "talred"
   ],
   "packageManager": "pnpm@11.21.0+sha512.521705bce689924eac72f5a3587122f362689ef6571e55ba80076fd637c11132ecffada26fad4ea79c485bfddbfd3d5a2a5b05805a77e893de71ec8a6cca3bb1",
   "scripts": {
@@ -49,26 +49,26 @@
     "outdated": "pnpm outdated --long"
   },
   "dependencies": {
-    "@iconify-json/lucide": "^1.2.126",
+    "@iconify-json/lucide": "^1.2.140",
     "@nuxt/kit": "4.5.2",
     "@nuxt/schema": "4.5.2",
     "@vueuse/core": "^14.4.0",
     "@vueuse/nuxt": "^14.4.0",
     "h3": "^1.15.11",
-    "nuxt": "^4.5.2",
+    "nuxt": "^4.6.0",
     "nuxt-auth-utils": "^0.5.30",
     "nuxt-csurf": "^1.6.6",
     "ohash": "^2.0.12",
     "tailwindcss": "^4.3.3",
-    "vue": "^3.5.42",
+    "vue": "^3.5.43",
     "vue-router": "^5.3.1",
-    "zod": "^4.5.4"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.17.0",
-    "@nuxt/ui": "^4.11.2",
-    "eslint": "^10.9.1",
+    "@nuxt/ui": "^4.11.3",
+    "eslint": "^10.12.0",
     "typescript": "^6.0.3",
-    "vue-tsc": "^3.3.11"
+    "vue-tsc": "^3.3.12"
   }
 }

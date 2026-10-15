@@ -68,6 +68,9 @@ export type IdentityHostedApplication = {
   name: string
   application_url: string
   callback_url: string
+  authentication_mode?: 'hosted' | 'app'
+  password_reset_url?: string | null
+  policy_revision?: string | null
   auth_page_set: string
   appearance: {
     welcome_text: string | null
@@ -82,6 +85,12 @@ export type IdentityHostedApplication = {
     privacy_url: string | null
   }
   status: 'active' | 'disabled'
+}
+
+export type IdentityApplicationListItem = {
+  application: IdentityHostedApplication
+  project: IdentityProject
+  clients: IdentityClient[]
 }
 
 export type IdentityMembership = {

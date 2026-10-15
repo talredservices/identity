@@ -36,28 +36,32 @@ export type IdentityAuthenticationContext = {
   }
 }
 
+export type IdentityHostedApplicationMetadata = {
+  key: string
+  name: string
+  projectName: string
+  returnUrl: string
+  presentation: {
+    pageSet: string
+    productName: string
+    welcomeText: string | null
+    accentColor: string | null
+    backgroundPreset: 'identity' | 'slate' | 'indigo' | 'emerald' | 'sunset'
+    logoUrl: string | null
+    designTokens: Record<string, string>
+  }
+  authentication: {
+    googleEnabled: boolean
+    termsRequired: boolean
+    termsUrl: string | null
+    privacyUrl: string | null
+  }
+}
+
 export type IdentityAuthenticationExperience = {
   primary: IdentityAuthenticationContext
   sandbox: IdentityAuthenticationContext | null
-  application?: {
-    key: string
-    name: string
-    returnUrl: string
-    authPageSet: string
-    appearance: {
-      welcomeText: string | null
-      accentColor: string | null
-      backgroundPreset: 'identity' | 'slate' | 'indigo' | 'emerald' | 'sunset'
-      logoUrl: string | null
-      designTokens: Record<string, string>
-    }
-    authentication: {
-      googleEnabled: boolean
-      termsRequired: boolean
-      termsUrl: string | null
-      privacyUrl: string | null
-    }
-  }
+  application?: IdentityHostedApplicationMetadata
 }
 
 export type IdentityAccountSession = {

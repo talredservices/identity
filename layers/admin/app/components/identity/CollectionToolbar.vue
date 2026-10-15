@@ -17,6 +17,7 @@ const search = defineModel<string>({ default: '' })
         v-model="search"
         icon="i-lucide-search"
         :placeholder="props.placeholder"
+        :aria-label="props.placeholder"
         size="lg"
         class="w-full sm:max-w-sm"
         :trailing-icon="search ? 'i-lucide-x' : undefined"

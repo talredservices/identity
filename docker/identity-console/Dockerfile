@@ -1,15 +1,15 @@
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS build
+FROM node:22-alpine AS build
 
 WORKDIR /app
 RUN corepack enable
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
-
+# Workspace manifests, Nuxt config, and dependency patches must be present
+# before postinstall runs nuxt prepare.
 COPY . .
+RUN pnpm install --frozen-lockfile
 RUN pnpm build
 
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
+FROM node:22-alpine
 
 WORKDIR /app
 ENV NODE_ENV=production

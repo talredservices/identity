@@ -16,6 +16,7 @@ final class ResetIdentityPassword extends Notification
         private readonly string $token,
         private readonly ?string $clientId = null,
         private readonly ?string $authPageSet = null,
+        private readonly ?string $applicationName = null,
     ) {}
 
     /** @return list<string> */
@@ -26,38 +27,49 @@ final class ResetIdentityPassword extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $mail = (new MailMessage)
-            ->subject('Reset your identity password')
-            ->line('A password reset was requested for your identity account.');
+        $email = method_exists($notifiable, 'getEmailForPasswordReset')
+            ? (string) $notifiable->getEmailForPasswordReset()
+            : (string) ($notifiable->routeNotificationFor('mail') ?? '');
         $resetUrl = (string) config('zolta.identity.password_reset_url');
         if ($resetUrl !== '') {
             $resetUrl = $this->withHostedAuthPageSet($resetUrl);
             $separator = str_contains($resetUrl, '?') ? '&' : '?';
-            $mail->action('Reset password', $resetUrl.$separator.http_build_query(array_filter([
-                'email' => $notifiable->email,
+            $resetUrl .= $separator.http_build_query(array_filter([
+                'email' => $email,
                 'token' => $this->token,
                 'client_id' => $this->clientId,
-            ])));
-        } else {
-            $mail->line('Use this token in the application that requested the reset:')
-                ->line($this->token);
+            ]));
         }
 
-        return $mail->line('If you did not request this reset, ignore this message.');
+        return (new MailMessage)
+            ->from((string) config('mail.from.address'), $this->applicationName ?: 'Identity')
+            ->subject('Reset your password')
+            ->view('emails.identity-password-reset', [
+                'applicationName' => $this->applicationName ?: 'your account',
+                'resetUrl' => $resetUrl,
+            ])
+            ->text('emails.identity-password-reset-text', [
+                'applicationName' => $this->applicationName ?: 'your account',
+                'resetUrl' => $resetUrl,
+                'token' => $this->token,
+            ]);
     }
 
     private function withHostedAuthPageSet(string $resetUrl): string
     {
-        if ($this->authPageSet === null
-            || $this->authPageSet === ''
-            || $this->authPageSet === 'default'
-            || preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $this->authPageSet) !== 1) {
+        $pageSet = $this->authPageSet ?? 'default';
+        $enabledPageSets = config('zolta.identity.hosted_applications.page_sets', ['default']);
+
+        if ($pageSet === 'default'
+            || ! is_array($enabledPageSets)
+            || ! in_array($pageSet, $enabledPageSets, true)
+            || preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $pageSet) !== 1) {
             return $resetUrl;
         }
 
         return (string) preg_replace(
             '~\/auth\/reset-password(?=$|[?#])~',
-            '/auth/'.rawurlencode($this->authPageSet).'/reset-password',
+            '/auth/'.rawurlencode($pageSet).'/reset-password',
             $resetUrl,
             1,
         );

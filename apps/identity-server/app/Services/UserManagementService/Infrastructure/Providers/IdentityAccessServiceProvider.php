@@ -7,8 +7,11 @@ namespace App\Services\UserManagementService\Infrastructure\Providers;
 use App\Services\UserManagementService\API\Middleware\IdentityIntrospectionMiddleware;
 use App\Services\UserManagementService\API\Middleware\NitroInternalMiddleware;
 use App\Services\UserManagementService\API\Middleware\RequireIdentityAccessToken;
+use App\Services\UserManagementService\API\Middleware\RequireIdentityReauthentication;
 use App\Services\UserManagementService\Application\Contracts\Identity\Authentication\AcceptIdentityInvitation;
 use App\Services\UserManagementService\Application\Contracts\Identity\Authentication\IssueIdentityAccess;
+use App\Services\UserManagementService\Application\Contracts\Identity\Authentication\ManageIdentityAccountSecurity;
+use App\Services\UserManagementService\Application\Contracts\Identity\Authentication\ManageIdentityGoogleAuthorization;
 use App\Services\UserManagementService\Application\Contracts\Identity\Authentication\ManageIdentityHandoffs;
 use App\Services\UserManagementService\Application\Contracts\Identity\Authentication\ManageIdentitySessions;
 use App\Services\UserManagementService\Application\Contracts\Identity\Authentication\ReadIdentityAccessContext;
@@ -19,6 +22,7 @@ use App\Services\UserManagementService\Application\Contracts\Identity\Authentica
 use App\Services\UserManagementService\Application\Contracts\Identity\Projects\ConfigureIdentityProjectEnvironment;
 use App\Services\UserManagementService\Application\Contracts\Identity\Projects\ConfigureIdentityProjectRegistration;
 use App\Services\UserManagementService\Application\Contracts\Identity\Projects\CreateIdentityProject;
+use App\Services\UserManagementService\Application\Contracts\Identity\Projects\IssuePlatformOnboardingInvitation;
 use App\Services\UserManagementService\Application\Contracts\Identity\Projects\ManageIdentityClients;
 use App\Services\UserManagementService\Application\Contracts\Identity\Projects\ManageIdentityHostedApplications;
 use App\Services\UserManagementService\Application\Contracts\Identity\Projects\ManageIdentityProjectAccess;
@@ -32,9 +36,12 @@ use App\Services\UserManagementService\Application\Contracts\Identity\Projects\R
 use App\Services\UserManagementService\Application\Contracts\IdentityInstallationServiceInterface;
 use App\Services\UserManagementService\Application\Contracts\IdentityLifecyclePublisherInterface;
 use App\Services\UserManagementService\Infrastructure\Repositories\EloquentIdentityHostedApplicationContextRepository;
+use App\Services\UserManagementService\Infrastructure\Services\EloquentIdentityAccountSecurity;
 use App\Services\UserManagementService\Infrastructure\Services\EloquentIdentityAuthenticationService;
 use App\Services\UserManagementService\Infrastructure\Services\EloquentIdentityInstallationService;
 use App\Services\UserManagementService\Infrastructure\Services\EloquentIdentityProjectService;
+use App\Services\UserManagementService\Infrastructure\Services\Identity\EloquentPlatformOnboardingInvitationIssuer;
+use App\Services\UserManagementService\Infrastructure\Services\Identity\IdentityGoogleAuthorization;
 use App\Services\UserManagementService\Infrastructure\Webhooks\IdentityWebhookPublisher;
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
@@ -43,6 +50,8 @@ final class IdentityAccessServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(ManageIdentityAccountSecurity::class, EloquentIdentityAccountSecurity::class);
+        $this->app->bind(ManageIdentityGoogleAuthorization::class, IdentityGoogleAuthorization::class);
         $this->app->bind(IssueIdentityAccess::class, EloquentIdentityAuthenticationService::class);
         $this->app->bind(ReadIdentityAccessContext::class, EloquentIdentityAuthenticationService::class);
         $this->app->bind(VerifyIdentityEmail::class, EloquentIdentityAuthenticationService::class);
@@ -60,6 +69,7 @@ final class IdentityAccessServiceProvider extends ServiceProvider
         $this->app->bind(ManageIdentityClients::class, EloquentIdentityProjectService::class);
         $this->app->bind(ManageIdentityHostedApplications::class, EloquentIdentityProjectService::class);
         $this->app->bind(ManageIdentityProjectAccess::class, EloquentIdentityProjectService::class);
+        $this->app->bind(IssuePlatformOnboardingInvitation::class, EloquentPlatformOnboardingInvitationIssuer::class);
         $this->app->bind(ManageIdentityProjectDeletion::class, EloquentIdentityProjectService::class);
         $this->app->bind(ManageIdentityProjectSuspension::class, EloquentIdentityProjectService::class);
         $this->app->bind(ManageIdentityProjectCatalog::class, EloquentIdentityProjectService::class);
@@ -88,6 +98,7 @@ final class IdentityAccessServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $this->app->make(Router::class)->aliasMiddleware('identity.reauthenticate', RequireIdentityReauthentication::class);
         $this->app->make(Router::class)->aliasMiddleware('identity.introspect', IdentityIntrospectionMiddleware::class);
         $this->app->make(Router::class)->aliasMiddleware('identity.token', RequireIdentityAccessToken::class);
         $this->app->make(Router::class)->aliasMiddleware('identity.hosted-internal', NitroInternalMiddleware::class);

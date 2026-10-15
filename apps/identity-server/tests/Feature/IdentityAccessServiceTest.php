@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Services\UserManagementService\Application\Contracts\Identity\Authentication\ManageIdentityAccountSecurity;
 use App\Services\UserManagementService\Application\Contracts\Identity\Projects\CreateIdentityProject;
+use App\Services\UserManagementService\Application\Contracts\OAuthGateway;
+use App\Services\UserManagementService\Application\DTOs\External\OAuthUser;
+use App\Services\UserManagementService\Application\Exceptions\IdentityAuthenticationException;
 use App\Services\UserManagementService\Infrastructure\Jobs\DeliverIdentityWebhook;
 use App\Services\UserManagementService\Infrastructure\Models\Eloquent\IdentityAccessCatalogPermission;
 use App\Services\UserManagementService\Infrastructure\Models\Eloquent\IdentityAccessCatalogRole;
@@ -21,10 +25,17 @@ use App\Services\UserManagementService\Infrastructure\Models\Eloquent\IdentityRe
 use App\Services\UserManagementService\Infrastructure\Models\Eloquent\IdentityWebhookDelivery;
 use App\Services\UserManagementService\Infrastructure\Models\Eloquent\IdentityWebhookEndpoint;
 use App\Services\UserManagementService\Infrastructure\Models\Eloquent\User;
+use App\Services\UserManagementService\Infrastructure\Notifications\ResetIdentityPassword;
 use App\Services\UserManagementService\Infrastructure\Webhooks\IdentityWebhookPublisher;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -97,6 +108,40 @@ final class IdentityAccessServiceTest extends TestCase
             'refresh_token' => $login['refresh_token'],
         ])->assertOk()->json('data');
         $this->assertNotSame($login['refresh_token'], $refresh['refresh_token']);
+    }
+
+    public function test_system_admin_can_bootstrap_access_to_any_project_with_the_global_password(): void
+    {
+        [$user, $project, $client, $secret] = $this->identityFixture();
+        $user->forceFill([
+            'is_system_admin' => true,
+            'password' => 'correct-password',
+        ])->save();
+        IdentityProjectAccount::query()->where('project_id', $project->id)->where('user_id', $user->id)->delete();
+        IdentityProjectMembership::query()->where('project_id', $project->id)->where('user_id', $user->id)->delete();
+
+        $this->postJson('/api/v1/identity/auth/login', [
+            'project' => $project->slug,
+            'client_id' => $client->id,
+            'client_secret' => $secret,
+            'email' => $user->email,
+            'password' => 'correct-password',
+        ])->assertOk()
+            ->assertJsonPath('data.identity.user.is_system_admin', true)
+            ->assertJsonPath('data.identity.project.id', $project->id)
+            ->assertJsonPath('data.identity.membership.is_admin', true);
+
+        $this->assertDatabaseHas('identity_project_accounts', [
+            'project_id' => $project->id,
+            'user_id' => $user->id,
+            'status' => 'active',
+        ]);
+        $this->assertDatabaseHas('identity_project_memberships', [
+            'project_id' => $project->id,
+            'user_id' => $user->id,
+            'is_admin' => true,
+            'status' => 'active',
+        ]);
     }
 
     public function test_refresh_token_replay_revokes_the_token_family(): void
@@ -205,10 +250,10 @@ final class IdentityAccessServiceTest extends TestCase
         IdentityHostedApplication::query()->create([
             'project_id' => $project->id,
             'primary_client_id' => $client->id,
-            'key' => 'portfolio',
-            'name' => 'Portfolio',
-            'application_url' => 'https://portfolio.example.test/dashboard',
-            'callback_url' => 'https://portfolio.example.test/api/identity/portfolio/auth/callback',
+            'key' => 'example-app',
+            'name' => 'Example Application',
+            'application_url' => 'https://example-app.example.test/dashboard',
+            'callback_url' => 'https://example-app.example.test/api/identity/example-app/auth/callback',
             'status' => 'active',
         ]);
         config()->set('identity.hosted_applications.internal_token', 'hosted-application-test-token');
@@ -216,38 +261,38 @@ final class IdentityAccessServiceTest extends TestCase
         $this->postJson('/api/v1/identity/auth/logout/intent', [
             'client_id' => $client->id,
             'client_secret' => $secret,
-            'hosted_application' => 'portfolio',
+            'hosted_application' => 'example-app',
             'return_to' => 'https://attacker.example',
         ])->assertUnprocessable();
 
         $intent = $this->postJson('/api/v1/identity/auth/logout/intent', [
             'client_id' => $client->id,
             'client_secret' => $secret,
-            'hosted_application' => 'portfolio',
+            'hosted_application' => 'example-app',
             'return_to' => '/auth/login',
         ])->assertCreated()->json('data.intent');
 
         $consume = fn () => $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
-            ->postJson('/api/v1/identity/hosted-applications/portfolio/auth/logout/intent/consume', ['intent' => $intent]);
+            ->postJson('/api/v1/identity/hosted-applications/example-app/auth/logout/intent/consume', ['intent' => $intent]);
 
-        $consume()->assertOk()->assertJsonPath('data.redirect_url', 'https://portfolio.example.test/auth/login');
+        $consume()->assertOk()->assertJsonPath('data.redirect_url', 'https://example-app.example.test/auth/login');
         $consume()->assertUnauthorized();
 
         $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
-            ->postJson('/api/v1/identity/hosted-applications/portfolio/auth/logout/intent/consume', [
+            ->postJson('/api/v1/identity/hosted-applications/example-app/auth/logout/intent/consume', [
                 'intent' => Str::random(96),
             ])->assertUnauthorized();
 
         $expired = $this->postJson('/api/v1/identity/auth/logout/intent', [
             'client_id' => $client->id,
             'client_secret' => $secret,
-            'hosted_application' => 'portfolio',
+            'hosted_application' => 'example-app',
             'return_to' => '/auth/login',
         ])->assertCreated()->json('data.intent');
         IdentityLogoutIntent::query()->where('intent_hash', hash('sha256', $expired))
             ->update(['expires_at' => now()->subSecond()]);
         $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
-            ->postJson('/api/v1/identity/hosted-applications/portfolio/auth/logout/intent/consume', [
+            ->postJson('/api/v1/identity/hosted-applications/example-app/auth/logout/intent/consume', [
                 'intent' => $expired,
             ])->assertUnauthorized();
     }
@@ -258,10 +303,10 @@ final class IdentityAccessServiceTest extends TestCase
         IdentityHostedApplication::query()->create([
             'project_id' => $project->id,
             'primary_client_id' => $client->id,
-            'key' => 'job-tracker',
-            'name' => 'Job Tracker',
-            'application_url' => 'https://portfolio.example.test/dashboard',
-            'callback_url' => 'https://portfolio.example.test/api/identity/job-tracker/auth/callback',
+            'key' => 'example-app',
+            'name' => 'Example Application',
+            'application_url' => 'https://example-app.example.test/dashboard',
+            'callback_url' => 'https://example-app.example.test/api/identity/example-app/auth/callback',
             'status' => 'active',
         ]);
 
@@ -277,14 +322,14 @@ final class IdentityAccessServiceTest extends TestCase
 
         $this->postJson('/api/v1/identity/auth/authorization/intent', [
             ...$clientCredentials,
-            'hosted_application' => 'job-tracker',
+            'hosted_application' => 'example-app',
             'state' => Str::random(48),
             'demo_account_enabled' => false,
         ])->assertCreated();
 
         $this->postJson('/api/v1/identity/auth/logout/intent', [
             ...$clientCredentials,
-            'hosted_application' => 'job-tracker',
+            'hosted_application' => 'example-app',
             'return_to' => '/en/auth/login',
         ])->assertCreated();
     }
@@ -293,8 +338,8 @@ final class IdentityAccessServiceTest extends TestCase
     {
         [, $project, $client, $secret] = $this->identityFixture();
         $sandboxProject = IdentityProject::query()->create([
-            'name' => 'Portfolio sandbox',
-            'slug' => 'portfolio-sandbox-'.Str::random(6),
+            'name' => 'Example Application sandbox',
+            'slug' => 'example-app-sandbox-'.Str::random(6),
             'status' => 'active',
             'mode' => 'sandbox',
             'sandbox_ttl_minutes' => 60,
@@ -303,7 +348,7 @@ final class IdentityAccessServiceTest extends TestCase
         $sandboxSecret = Str::random(64);
         $sandboxClient = IdentityProjectClient::query()->create([
             'project_id' => $sandboxProject->id,
-            'name' => 'Portfolio sandbox BFF',
+            'name' => 'Example Application sandbox BFF',
             'secret_hash' => hash('sha256', $sandboxSecret),
             'secret_prefix' => Str::substr($sandboxSecret, 0, 8),
             'status' => 'active',
@@ -312,10 +357,10 @@ final class IdentityAccessServiceTest extends TestCase
             'project_id' => $project->id,
             'primary_client_id' => $client->id,
             'sandbox_client_id' => $sandboxClient->id,
-            'key' => 'portfolio-auth',
-            'name' => 'Portfolio Auth',
-            'application_url' => 'https://portfolio.example.test',
-            'callback_url' => 'https://portfolio.example.test/api/identity/portfolio/auth/callback',
+            'key' => 'example-app-auth',
+            'name' => 'Example Application Auth',
+            'application_url' => 'https://example-app.example.test',
+            'callback_url' => 'https://example-app.example.test/api/identity/example-app/auth/callback',
             'status' => 'active',
         ]);
         config()->set('identity.hosted_applications.internal_token', 'hosted-application-test-token');
@@ -324,13 +369,13 @@ final class IdentityAccessServiceTest extends TestCase
         $intent = $this->postJson('/api/v1/identity/auth/authorization/intent', [
             'client_id' => $client->id,
             'client_secret' => $secret,
-            'hosted_application' => 'portfolio-auth',
+            'hosted_application' => 'example-app-auth',
             'state' => $state,
             'demo_account_enabled' => true,
         ])->assertCreated()->json('data.intent');
 
         $consume = fn () => $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
-            ->postJson('/api/v1/identity/hosted-applications/portfolio-auth/auth/authorization/intent/consume', [
+            ->postJson('/api/v1/identity/hosted-applications/example-app-auth/auth/authorization/intent/consume', [
                 'intent' => $intent,
             ]);
 
@@ -342,20 +387,20 @@ final class IdentityAccessServiceTest extends TestCase
         $disabledIntent = $this->postJson('/api/v1/identity/auth/authorization/intent', [
             'client_id' => $client->id,
             'client_secret' => $secret,
-            'hosted_application' => 'portfolio-auth',
+            'hosted_application' => 'example-app-auth',
             'state' => Str::random(48),
             'demo_account_enabled' => false,
         ])->assertCreated()->json('data.intent');
 
         $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
-            ->postJson('/api/v1/identity/hosted-applications/portfolio-auth/auth/authorization/intent/consume', [
+            ->postJson('/api/v1/identity/hosted-applications/example-app-auth/auth/authorization/intent/consume', [
                 'intent' => $disabledIntent,
             ])->assertOk()->assertJsonPath('data.features.demo_account', false);
 
         $withoutSandboxSecret = Str::random(64);
         $withoutSandboxClient = IdentityProjectClient::query()->create([
             'project_id' => $project->id,
-            'name' => 'Portfolio without sandbox BFF',
+            'name' => 'Example Application without sandbox BFF',
             'secret_hash' => hash('sha256', $withoutSandboxSecret),
             'secret_prefix' => Str::substr($withoutSandboxSecret, 0, 8),
             'status' => 'active',
@@ -363,22 +408,22 @@ final class IdentityAccessServiceTest extends TestCase
         IdentityHostedApplication::query()->create([
             'project_id' => $project->id,
             'primary_client_id' => $withoutSandboxClient->id,
-            'key' => 'portfolio-without-sandbox',
-            'name' => 'Portfolio without sandbox',
-            'application_url' => 'https://portfolio.example.test',
-            'callback_url' => 'https://portfolio.example.test/api/identity/portfolio/auth/callback',
+            'key' => 'example-app-without-sandbox',
+            'name' => 'Example Application without sandbox',
+            'application_url' => 'https://example-app.example.test',
+            'callback_url' => 'https://example-app.example.test/api/identity/example-app/auth/callback',
             'status' => 'active',
         ]);
         $unavailableIntent = $this->postJson('/api/v1/identity/auth/authorization/intent', [
             'client_id' => $withoutSandboxClient->id,
             'client_secret' => $withoutSandboxSecret,
-            'hosted_application' => 'portfolio-without-sandbox',
+            'hosted_application' => 'example-app-without-sandbox',
             'state' => Str::random(48),
             'demo_account_enabled' => true,
         ])->assertCreated()->json('data.intent');
 
         $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
-            ->postJson('/api/v1/identity/hosted-applications/portfolio-without-sandbox/auth/authorization/intent/consume', [
+            ->postJson('/api/v1/identity/hosted-applications/example-app-without-sandbox/auth/authorization/intent/consume', [
                 'intent' => $unavailableIntent,
             ])->assertOk()->assertJsonPath('data.features.demo_account', false);
 
@@ -394,8 +439,8 @@ final class IdentityAccessServiceTest extends TestCase
             'primary_client_id' => $client->id,
             'key' => 'account-portal',
             'name' => 'Account portal',
-            'application_url' => 'https://portfolio.example.test',
-            'callback_url' => 'https://portfolio.example.test/api/identity/account-portal/auth/callback',
+            'application_url' => 'https://example-app.example.test',
+            'callback_url' => 'https://example-app.example.test/api/identity/account-portal/auth/callback',
             'status' => 'active',
         ]);
         config()->set('identity.hosted_applications.internal_token', 'hosted-application-test-token');
@@ -708,6 +753,42 @@ final class IdentityAccessServiceTest extends TestCase
         ])->assertOk()->assertJsonPath('data.identity.user.username', 'Second profile');
     }
 
+    public function test_recovery_rotates_owner_credentials_without_erasing_identity_data(): void
+    {
+        $recoveryKey = 'test-recovery-key-that-is-never-stored-in-the-database';
+        putenv('IDENTITY_RECOVERY_KEY='.$recoveryKey);
+
+        $this->artisan('identity:bootstrap', [
+            'email' => 'owner@example.com',
+            '--name' => 'Owner',
+            '--password' => 'original-owner-password',
+        ])->assertSuccessful();
+
+        $owner = User::query()->where('email', 'owner@example.com')->firstOrFail();
+        $owner->createToken('existing-session');
+        $account = IdentityProjectAccount::query()->where('user_id', $owner->getKey())->firstOrFail();
+        $projectCount = IdentityProject::query()->count();
+
+        $this->artisan('identity:recover-owner', ['--email' => 'owner@example.com'])
+            ->expectsQuestion('Recovery key', $recoveryKey)
+            ->expectsQuestion('New owner password', 'recovered-owner-password')
+            ->expectsQuestion('Confirm new owner password', 'recovered-owner-password')
+            ->assertSuccessful();
+
+        $owner->refresh();
+        $account->refresh();
+        $this->assertTrue(Hash::check('recovered-owner-password', $owner->password));
+        $this->assertTrue(Hash::check('recovered-owner-password', $account->password));
+        $this->assertSame(0, $owner->tokens()->count());
+        $this->assertSame($projectCount, IdentityProject::query()->count());
+        $this->assertDatabaseHas('identity_audit_events', [
+            'event' => 'auth.identity_owner_recovered',
+            'target_id' => $owner->getKey(),
+        ]);
+
+        putenv('IDENTITY_RECOVERY_KEY');
+    }
+
     public function test_bootstrap_creates_owner_console_project_and_client(): void
     {
         $this->artisan('identity:bootstrap', [
@@ -775,6 +856,38 @@ final class IdentityAccessServiceTest extends TestCase
         $this->assertDatabaseHas('identity_project_clients', [
             'id' => $clientId,
             'secret_hash' => hash('sha256', $clientSecret),
+        ]);
+    }
+
+    public function test_if_needed_repairs_an_existing_installation_missing_console_resources(): void
+    {
+        User::query()->create([
+            'id' => (string) Str::uuid(),
+            'email' => 'owner@example.com',
+            'username' => 'Owner',
+            'password' => Hash::make('old-owner-password'),
+            'terms' => 'accepted',
+            'email_verified_at' => now(),
+            'is_system_admin' => true,
+        ]);
+
+        $this->artisan('identity:bootstrap', [
+            'email' => 'owner@example.com',
+            '--name' => 'Owner',
+            '--password' => 'strong-password-123',
+            '--client-id' => '02e92e58-0e50-4681-9d57-b122cac61b77',
+            '--client-secret' => 'stable-local-console-client-secret-1234567890',
+            '--if-needed' => true,
+        ])->assertSuccessful();
+
+        $this->assertDatabaseHas('identity_projects', ['slug' => 'identity-console']);
+        $this->assertDatabaseHas('identity_project_clients', [
+            'id' => '02e92e58-0e50-4681-9d57-b122cac61b77',
+            'name' => 'Identity Console BFF',
+        ]);
+        $this->assertDatabaseHas('identity_project_accounts', [
+            'username' => 'Owner',
+            'status' => 'active',
         ]);
     }
 
@@ -1023,7 +1136,7 @@ final class IdentityAccessServiceTest extends TestCase
 
         $createdClient = $this->withToken($accessToken)
             ->postJson("/api/v1/identity/projects/{$project->id}/clients", [
-                'name' => 'Job Tracker API',
+                'name' => 'Example Application API',
             ])
             ->assertCreated()
             ->assertJsonPath('data.status', 'active')
@@ -1056,7 +1169,7 @@ final class IdentityAccessServiceTest extends TestCase
 
         $createdWebhook = $this->withToken($accessToken)
             ->postJson("/api/v1/identity/projects/{$project->id}/webhooks", [
-                'url' => 'https://job-tracker.example.com/webhooks/identity',
+                'url' => 'https://example-app.example.com/webhooks/identity',
                 'events' => ['identity.user.expired'],
             ])
             ->assertCreated()
@@ -1072,7 +1185,7 @@ final class IdentityAccessServiceTest extends TestCase
             ->putJson(
                 "/api/v1/identity/projects/{$project->id}/webhooks/{$createdWebhook['id']}",
                 [
-                    'url' => 'https://job-tracker.example.com/webhooks/accounts',
+                    'url' => 'https://example-app.example.com/webhooks/accounts',
                     'events' => ['identity.user.deletion_requested'],
                     'status' => 'disabled',
                 ],
@@ -1089,7 +1202,7 @@ final class IdentityAccessServiceTest extends TestCase
         $this->assertDatabaseHas('identity_webhook_endpoints', [
             'id' => $createdWebhook['id'],
             'project_id' => $project->id,
-            'url' => 'https://job-tracker.example.com/webhooks/accounts',
+            'url' => 'https://example-app.example.com/webhooks/accounts',
             'status' => 'disabled',
         ]);
 
@@ -1176,46 +1289,71 @@ final class IdentityAccessServiceTest extends TestCase
         $this->assertDatabaseHas('identity_project_clients', ['id' => $client['id']]);
     }
 
+    public function test_project_administrator_can_rename_a_client_without_changing_credentials_or_bindings(): void
+    {
+        [$administrator, $project, $managementClient, $managementSecret] = $this->identityFixture(true);
+        $managementToken = $this->login($administrator, $project, $managementClient, $managementSecret)['access_token'];
+        $client = $this->withToken($managementToken)
+            ->postJson("/api/v1/identity/projects/{$project->id}/clients", ['name' => 'Example Application Worker'])
+            ->assertCreated()
+            ->json('data');
+        $clientModel = IdentityProjectClient::query()->findOrFail($client['id']);
+        $secretHash = $clientModel->secret_hash;
+        $application = IdentityHostedApplication::query()->create([
+            'project_id' => $project->id,
+            'primary_client_id' => $clientModel->id,
+            'key' => 'example-page-set',
+            'name' => 'Example Application',
+            'application_url' => 'https://tasks.example.com',
+            'callback_url' => 'https://tasks.example.com/callback',
+            'status' => 'active',
+        ]);
+
+        $this->withToken($managementToken)
+            ->patchJson(
+                "/api/v1/identity/projects/{$project->id}/clients/{$clientModel->id}/name",
+                ['name' => 'Renamed Example Application Worker'],
+            )
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Renamed Example Application Worker');
+
+        $clientModel->refresh();
+        $this->assertSame('Renamed Example Application Worker', $clientModel->name);
+        $this->assertSame($secretHash, $clientModel->secret_hash);
+        $this->assertDatabaseHas('identity_hosted_applications', [
+            'id' => $application->id,
+            'primary_client_id' => $clientModel->id,
+        ]);
+    }
+
     public function test_project_administrator_can_manage_a_hosted_application_and_the_nuxt_host_can_resolve_it(): void
     {
         [$administrator, $project, $client, $secret] = $this->identityFixture(true);
         $accessToken = $this->login($administrator, $project, $client, $secret)['access_token'];
         $created = $this->withToken($accessToken)
             ->postJson("/api/v1/identity/projects/{$project->id}/hosted-applications", [
-                'name' => 'Job Tracker',
-                'key' => 'job-tracker',
+                'name' => 'Example Application',
+                'key' => 'example-app',
                 'primary_client_id' => $client->id,
-                'application_url' => 'https://job-tracker.example.test/dashboard',
-                'callback_url' => 'https://job-tracker.example.test/api/auth/callback',
-                'auth_page_set' => 'job-tracker',
+                'application_url' => 'https://example-app.example.test/dashboard',
+                'callback_url' => 'https://example-app.example.test/api/auth/callback',
                 'appearance' => [
                     'welcome_text' => 'Manage your next opportunity.',
                     'accent_color' => '#3157D5',
                     'background_preset' => 'indigo',
-                    'design_tokens' => [
-                        'font_family' => 'Public Sans',
-                        'primary_600' => '#3157D5',
-                        'light_background' => '#F7F7FF',
-                        'unsafe_token' => 'ignored',
-                    ],
                 ],
             ])
             ->assertCreated()
-            ->assertJsonPath('data.key', 'job-tracker')
+            ->assertJsonPath('data.key', 'example-app')
             ->assertJsonPath('data.status', 'active')
-            ->assertJsonPath('data.auth_page_set', 'job-tracker')
             ->assertJsonPath('data.appearance.background_preset', 'indigo')
-            ->assertJsonPath('data.appearance.design_tokens.font_family', 'Public Sans')
-            ->assertJsonPath('data.appearance.design_tokens.primary_600', '#3157D5')
-            ->assertJsonPath('data.appearance.design_tokens.light_background', '#F7F7FF')
-            ->assertJsonMissingPath('data.appearance.design_tokens.unsafe_token')
             ->json('data');
 
         $this->assertDatabaseHas('identity_hosted_applications', [
             'id' => $created['id'],
             'project_id' => $project->id,
             'primary_client_id' => $client->id,
-            'key' => 'job-tracker',
+            'key' => 'example-app',
         ]);
 
         $this->withToken($accessToken)
@@ -1225,10 +1363,10 @@ final class IdentityAccessServiceTest extends TestCase
             ->assertJsonPath('data.hosted_applications.0.id', $created['id']);
 
         config()->set('identity.hosted_applications.internal_token', 'hosted-application-test-token');
-        $this->getJson('/api/v1/identity/hosted-applications/job-tracker/configuration')
+        $this->getJson('/api/v1/identity/hosted-applications/example-app/configuration')
             ->assertUnauthorized();
         $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
-            ->getJson('/api/v1/identity/hosted-applications/job-tracker/configuration')
+            ->getJson('/api/v1/identity/hosted-applications/example-app/configuration')
             ->assertOk()
             ->assertJsonPath('data.primary.project', $project->slug)
             ->assertJsonPath('data.primary.client_id', $client->id)
@@ -1238,7 +1376,7 @@ final class IdentityAccessServiceTest extends TestCase
 
         Storage::fake('public');
         config()->set('zolta.identity.hosted_applications.branding_disk', 'public');
-        $logo = UploadedFile::fake()->image('job-tracker.png', 128, 128);
+        $logo = UploadedFile::fake()->image('example-app.png', 128, 128);
         $uploaded = $this->withToken($accessToken)
             ->post("/api/v1/identity/projects/{$project->id}/hosted-applications/{$created['id']}/logo", ['logo' => $logo])
             ->assertCreated()
@@ -1253,7 +1391,7 @@ final class IdentityAccessServiceTest extends TestCase
             'logo_path' => 'identity/hosted-applications/'.$created['id'].'/legacy.svg',
         ]);
         $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
-            ->getJson('/api/v1/identity/hosted-applications/job-tracker/configuration')
+            ->getJson('/api/v1/identity/hosted-applications/example-app/configuration')
             ->assertOk()
             ->assertJsonPath('data.appearance.logo_url', null);
         $this->withToken($accessToken)
@@ -1269,21 +1407,21 @@ final class IdentityAccessServiceTest extends TestCase
             'logo_path' => null,
         ]);
         $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
-            ->postJson('/api/v1/identity/hosted-applications/job-tracker/auth/context')
+            ->postJson('/api/v1/identity/hosted-applications/example-app/auth/context')
             ->assertOk()
             ->assertJsonPath('data.client.id', $client->id);
 
-        $documentStudioClient = $this->withToken($accessToken)
-            ->postJson("/api/v1/identity/projects/{$project->id}/clients", ['name' => 'Document Studio BFF'])
+        $anotherExampleAppClient = $this->withToken($accessToken)
+            ->postJson("/api/v1/identity/projects/{$project->id}/clients", ['name' => 'Another Example App BFF'])
             ->assertCreated()
             ->json('data');
         $this->withToken($accessToken)
             ->postJson("/api/v1/identity/projects/{$project->id}/hosted-applications", [
-                'name' => 'Document Studio',
-                'key' => 'document-studio',
-                'primary_client_id' => $documentStudioClient['id'],
-                'application_url' => 'https://document-studio.example.test',
-                'callback_url' => 'https://document-studio.example.test/api/identity/document-studio/auth/callback',
+                'name' => 'Another Example App',
+                'key' => 'another-example-app',
+                'primary_client_id' => $anotherExampleAppClient['id'],
+                'application_url' => 'https://another-example-app.example.test',
+                'callback_url' => 'https://another-example-app.example.test/api/identity/another-example-app/auth/callback',
                 'appearance' => [
                     'welcome_text' => 'A focused writing space.',
                     'accent_color' => '#16806B',
@@ -1292,24 +1430,24 @@ final class IdentityAccessServiceTest extends TestCase
             ])
             ->assertCreated();
         $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
-            ->getJson('/api/v1/identity/hosted-applications/document-studio/configuration')
+            ->getJson('/api/v1/identity/hosted-applications/another-example-app/configuration')
             ->assertOk()
-            ->assertJsonPath('data.name', 'Document Studio')
-            ->assertJsonPath('data.primary.client_id', $documentStudioClient['id'])
-            ->assertJsonPath('data.callback_url', 'https://document-studio.example.test/api/identity/document-studio/auth/callback')
+            ->assertJsonPath('data.name', 'Another Example App')
+            ->assertJsonPath('data.primary.client_id', $anotherExampleAppClient['id'])
+            ->assertJsonPath('data.callback_url', 'https://another-example-app.example.test/api/identity/another-example-app/auth/callback')
             ->assertJsonPath('data.appearance.background_preset', 'emerald');
         $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
-            ->getJson('/api/v1/identity/hosted-applications/job-tracker/configuration')
+            ->getJson('/api/v1/identity/hosted-applications/example-app/configuration')
             ->assertOk()
             ->assertJsonPath('data.primary.client_id', $client->id)
             ->assertJsonPath('data.appearance.background_preset', 'indigo');
 
         $this->withToken($accessToken)
             ->patchJson("/api/v1/identity/projects/{$project->id}/hosted-applications/{$created['id']}", [
-                'name' => 'Job Tracker',
+                'name' => 'Example Application',
                 'primary_client_id' => $client->id,
-                'application_url' => 'https://job-tracker.example.test/dashboard',
-                'callback_url' => 'https://job-tracker.example.test/api/auth/callback',
+                'application_url' => 'https://example-app.example.test/dashboard',
+                'callback_url' => 'https://example-app.example.test/api/auth/callback',
                 'appearance' => [
                     'welcome_text' => null,
                     'accent_color' => null,
@@ -1319,24 +1457,24 @@ final class IdentityAccessServiceTest extends TestCase
             ])
             ->assertOk();
         $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
-            ->getJson('/api/v1/identity/hosted-applications/job-tracker/configuration')
+            ->getJson('/api/v1/identity/hosted-applications/example-app/configuration')
             ->assertNotFound();
     }
 
     public function test_hosted_login_throttle_is_scoped_to_each_hosted_application(): void
     {
         [$user, $project, $client] = $this->identityFixture();
-        $jobTracker = 'job-tracker-rate-limit-'.Str::lower(Str::random(6));
-        $documentStudio = 'document-studio-rate-limit-'.Str::lower(Str::random(6));
-        $documentStudioClient = IdentityProjectClient::query()->create([
+        $exampleApp = 'example-app-rate-limit-'.Str::lower(Str::random(6));
+        $anotherExampleApp = 'another-example-app-rate-limit-'.Str::lower(Str::random(6));
+        $anotherExampleAppClient = IdentityProjectClient::query()->create([
             'project_id' => $project->id,
-            'name' => 'Document Studio BFF',
+            'name' => 'Another Example App BFF',
             'secret_hash' => hash('sha256', Str::random(64)),
-            'secret_prefix' => 'document',
+            'secret_prefix' => 'example',
             'status' => 'active',
         ]);
 
-        foreach ([$jobTracker => $client, $documentStudio => $documentStudioClient] as $key => $hostedClient) {
+        foreach ([$exampleApp => $client, $anotherExampleApp => $anotherExampleAppClient] as $key => $hostedClient) {
             IdentityHostedApplication::query()->create([
                 'project_id' => $project->id,
                 'primary_client_id' => $hostedClient->id,
@@ -1356,16 +1494,16 @@ final class IdentityAccessServiceTest extends TestCase
 
         for ($attempt = 0; $attempt < 20; $attempt++) {
             $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
-                ->postJson("/api/v1/identity/hosted-applications/{$jobTracker}/auth/login", $payload)
+                ->postJson("/api/v1/identity/hosted-applications/{$exampleApp}/auth/login", $payload)
                 ->assertUnauthorized();
         }
 
         $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
-            ->postJson("/api/v1/identity/hosted-applications/{$documentStudio}/auth/login", $payload)
+            ->postJson("/api/v1/identity/hosted-applications/{$anotherExampleApp}/auth/login", $payload)
             ->assertUnauthorized();
 
         $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
-            ->postJson("/api/v1/identity/hosted-applications/{$jobTracker}/auth/login", $payload)
+            ->postJson("/api/v1/identity/hosted-applications/{$exampleApp}/auth/login", $payload)
             ->assertTooManyRequests();
     }
 
@@ -1809,6 +1947,272 @@ final class IdentityAccessServiceTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_identity_sessions_cannot_list_or_revoke_another_client_in_the_same_project(): void
+    {
+        [$user, $project, $client, $secret] = $this->identityFixture();
+        $otherSecret = Str::random(64);
+        $otherClient = IdentityProjectClient::query()->create([
+            'project_id' => $project->id, 'name' => 'Other application client',
+            'secret_hash' => hash('sha256', $otherSecret), 'secret_prefix' => substr($otherSecret, 0, 8), 'status' => 'active',
+        ]);
+        $session = $this->login($user, $project, $client, $secret);
+        $otherSession = $this->login($user, $project, $otherClient, $otherSecret);
+        $otherFamily = PersonalAccessToken::findToken($otherSession['access_token'])->identity_refresh_family_id;
+        $this->withToken($session['access_token'])->getJson('/api/v1/identity/auth/sessions')
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.client.id', $client->id);
+        $this->withToken($session['access_token'])->deleteJson("/api/v1/identity/auth/sessions/{$otherFamily}")
+            ->assertForbidden();
+        $this->withToken($otherSession['access_token'])->getJson('/api/v1/identity/auth/me')->assertOk();
+    }
+
+    public function test_app_account_password_requires_a_single_use_operation_bound_grant(): void
+    {
+        [$user, $project, $client, $secret] = $this->identityFixture();
+        $session = $this->login($user, $project, $client, $secret);
+        $otherSession = $this->login($user, $project, $client, $secret);
+        $password = ['password' => 'new-project-password', 'password_confirmation' => 'new-project-password'];
+        $this->withToken($session['access_token'])->putJson('/api/v1/identity/auth/account/password', $password)
+            ->assertForbidden()->assertJsonPath('code', 'reauthentication_required');
+        $grant = $this->withToken($session['access_token'])->postJson('/api/v1/identity/auth/reauthenticate', [
+            'client_id' => $client->id, 'client_secret' => $secret,
+            'password' => 'correct-password', 'sensitive_operation' => 'password',
+        ])->assertOk()->json('data.grant');
+        $this->assertSame(64, strlen($grant));
+        $this->withToken($session['access_token'])->withHeader('X-Identity-Reauthentication', $grant)
+            ->putJson('/api/v1/identity/auth/account/password', $password)->assertOk();
+        $account = IdentityProjectAccount::query()->where('project_id', $project->id)->where('user_id', $user->id)->firstOrFail();
+        $this->assertTrue(Hash::check('new-project-password', $account->password));
+        $this->assertTrue(Hash::check('correct-password', $user->fresh()->password));
+        $this->assertNull(PersonalAccessToken::findToken($otherSession['access_token']));
+        $this->withToken($session['access_token'])->withHeader('X-Identity-Reauthentication', $grant)
+            ->putJson('/api/v1/identity/auth/account/password', $password)->assertForbidden();
+    }
+
+    public function test_reauthentication_rejects_wrong_password_and_other_clients(): void
+    {
+        [$user, $project, $client, $secret] = $this->identityFixture();
+        [, , $otherClient, $otherSecret] = $this->identityFixture();
+        $session = $this->login($user, $project, $client, $secret);
+        foreach ([[$client->id, $secret, 'wrong-password'], [$otherClient->id, $otherSecret, 'correct-password']] as [$id, $credential, $password]) {
+            $this->withToken($session['access_token'])->postJson('/api/v1/identity/auth/reauthenticate', [
+                'client_id' => $id, 'client_secret' => $credential, 'password' => $password, 'sensitive_operation' => 'password',
+            ])->assertUnauthorized();
+        }
+    }
+
+    public function test_reauthentication_grants_expire_and_cannot_cross_session_or_operation(): void
+    {
+        [$user, $project, $client, $secret] = $this->identityFixture();
+        $session = $this->login($user, $project, $client, $secret);
+        $other = $this->login($user, $project, $client, $secret);
+        $grant = $this->withToken($session['access_token'])->postJson('/api/v1/identity/auth/reauthenticate', [
+            'client_id' => $client->id, 'client_secret' => $secret,
+            'password' => 'correct-password', 'sensitive_operation' => 'export',
+        ])->assertOk()->json('data.grant');
+        $security = app(ManageIdentityAccountSecurity::class);
+        foreach ([[$other['access_token'], 'export'], [$session['access_token'], 'password']] as [$token, $operation]) {
+            try {
+                $security->consumeGrant($token, $grant, $operation);
+                $this->fail('An incorrectly bound grant was accepted.');
+            } catch (IdentityAuthenticationException) {
+                $this->assertTrue(true);
+            }
+        }
+        $this->travel(5)->minutes();
+        $this->expectException(IdentityAuthenticationException::class);
+        $security->consumeGrant($session['access_token'], $grant, 'export');
+    }
+
+    public function test_applications_contract_forces_hosted_mode_and_persists_configured_auth_appearance(): void
+    {
+        [$user, $project, $client, $secret] = $this->identityFixture(true);
+        $session = $this->login($user, $project, $client, $secret);
+        $created = $this->withToken($session['access_token'])->postJson("/api/v1/identity/projects/{$project->id}/applications", [
+            'key' => 'example-product', 'name' => 'Example Product', 'primary_client_id' => $client->id, 'authentication_mode' => 'hosted',
+            'application_url' => 'https://product.example.test', 'callback_url' => 'https://product.example.test/api/identity/projects/auth/callback',
+            'auth_page_set' => 'example-product', 'appearance' => ['welcome_text' => 'Welcome to Example Product'],
+        ])->assertCreated()->assertJsonPath('data.authentication_mode', 'hosted')->json('data');
+        IdentityHostedApplication::query()->whereKey($created['id'])->update([
+            'password_reset_url' => 'https://example-app.example.test/projects/auth/reset-password',
+        ]);
+        $this->withToken($session['access_token'])->patchJson("/api/v1/identity/projects/{$project->id}/applications/{$created['id']}", [
+            'name' => 'Example Product', 'primary_client_id' => $client->id, 'status' => 'active',
+            'application_url' => $created['application_url'], 'callback_url' => $created['callback_url'],
+            'authentication_mode' => 'app', 'password_reset_url' => 'https://example-app.example.test/projects/auth/reset-password',
+            'auth_page_set' => 'example-product', 'appearance' => ['welcome_text' => 'Configured product text'],
+        ])->assertOk();
+        $application = IdentityHostedApplication::query()->findOrFail($created['id']);
+        $this->assertSame('example-product', $application->key);
+        $this->assertSame('example-product', $application->auth_page_set);
+        $this->assertSame('Configured product text', $application->appearance['welcome_text']);
+        $this->assertNull($application->password_reset_url);
+        $this->assertSame('hosted', $application->authentication_mode);
+        $this->withToken($session['access_token'])->patchJson("/api/v1/identity/projects/{$project->id}/applications/{$created['id']}", [
+            'name' => 'Example Product', 'primary_client_id' => $client->id, 'status' => 'active',
+            'application_url' => $created['application_url'], 'callback_url' => $created['callback_url'],
+            'authentication_mode' => 'app', 'password_reset_url' => 'https://evil.example/reset',
+        ])->assertOk();
+        $this->assertDatabaseHas('identity_hosted_applications', [
+            'id' => $created['id'],
+            'authentication_mode' => 'hosted',
+            'password_reset_url' => null,
+        ]);
+    }
+
+    public function test_app_registration_enforces_policy_and_preserves_project_verification(): void
+    {
+        [$user, $project, $client, $secret] = $this->identityFixture();
+        $project->forceFill(['registration_mode' => 'public', 'email_verification_required' => true])->save();
+        IdentityHostedApplication::query()->create([
+            'project_id' => $project->id, 'primary_client_id' => $client->id, 'key' => 'example-page-set', 'name' => 'Example Application',
+            'application_url' => 'https://example-app.example.test', 'callback_url' => 'https://example-app.example.test/callback',
+            'authentication_mode' => 'app', 'password_reset_url' => 'https://example-app.example.test/reset', 'policy_revision' => '2026-10',
+            'authentication' => ['terms_required' => true, 'terms_url' => 'https://example-app.example.test/terms'], 'status' => 'active',
+        ]);
+        $input = ['client_id' => $client->id, 'client_secret' => $secret, 'application_key' => 'example-page-set',
+            'username' => 'new-user', 'email' => 'new-user@example.test', 'password' => 'new-account-password', 'password_confirmation' => 'new-account-password'];
+        $this->postJson('/api/v1/identity/auth/register', $input)->assertForbidden();
+        $this->postJson('/api/v1/identity/auth/register', $input + ['terms_accepted' => true, 'policy_revision' => 'old'])->assertForbidden();
+        $registered = $this->postJson('/api/v1/identity/auth/register', $input + ['terms_accepted' => true, 'policy_revision' => '2026-10'])
+            ->assertCreated()->assertJsonPath('data.identity.user.email_verified', false)->json('data');
+        $this->assertDatabaseHas('identity_hosted_application_consents', ['policy_revision' => '2026-10']);
+        $this->withToken($registered['access_token'])->postJson('/api/v1/identity/auth/reauthenticate', [
+            'client_id' => $client->id, 'client_secret' => $secret, 'password' => 'new-account-password', 'sensitive_operation' => 'export',
+        ])->assertUnauthorized();
+    }
+
+    public function test_google_transaction_denial_expiry_replay_and_callback_binding(): void
+    {
+        [, $project, $client, $secret] = $this->identityFixture();
+        $project->forceFill(['google_social_authentication_enabled' => true])->save();
+        config()->set('services.google.client_id', 'google-test-client');
+        config()->set('services.google.client_secret', 'google-test-secret');
+        config()->set('services.google.identity_redirect', 'https://identity.example.test/api/v1/identity/auth/google/callback');
+        IdentityHostedApplication::query()->create([
+            'project_id' => $project->id, 'primary_client_id' => $client->id, 'key' => 'example-page-set', 'name' => 'Example Application',
+            'application_url' => 'https://example-app.example.test', 'callback_url' => 'https://example-app.example.test/callback',
+            'authentication_mode' => 'app', 'password_reset_url' => 'https://example-app.example.test/reset',
+            'authentication' => ['google_enabled' => true], 'status' => 'active',
+        ]);
+        $input = ['client_id' => $client->id, 'client_secret' => $secret, 'application_key' => 'example-page-set',
+            'redirect_uri' => 'https://example-app.example.test/callback', 'state' => str_repeat('s', 64)];
+        $this->postJson('/api/v1/identity/auth/google/authorize', array_replace($input, ['redirect_uri' => 'https://evil.example/callback']))->assertUnauthorized();
+        $url = $this->postJson('/api/v1/identity/auth/google/authorize', $input)->assertOk()->json('data.redirect_url');
+        parse_str(parse_url($url, PHP_URL_QUERY), $query);
+        $this->getJson('/api/v1/identity/auth/google/callback?'.http_build_query(['state' => $query['state'], 'error' => 'access_denied']))
+            ->assertRedirect('https://example-app.example.test/callback?'.http_build_query(['state' => $input['state'], 'error' => 'access_denied']));
+        $this->getJson('/api/v1/identity/auth/google/callback?'.http_build_query(['state' => $query['state'], 'error' => 'access_denied']))->assertUnauthorized();
+        $url = $this->postJson('/api/v1/identity/auth/google/authorize', $input)->assertOk()->json('data.redirect_url');
+        parse_str(parse_url($url, PHP_URL_QUERY), $query);
+        $this->travel(10)->minutes();
+        $this->getJson('/api/v1/identity/auth/google/callback?'.http_build_query(['state' => $query['state'], 'error' => 'access_denied']))->assertUnauthorized();
+    }
+
+    public function test_google_success_and_same_identity_reauthentication_use_one_time_handoffs(): void
+    {
+        [$user, $project, $client, $secret] = $this->identityFixture();
+        $project->forceFill(['google_social_authentication_enabled' => true])->save();
+        config()->set('services.google.client_id', 'google-test-client');
+        config()->set('services.google.client_secret', 'google-test-secret');
+        config()->set('services.google.identity_redirect', 'https://identity.example.test/api/v1/identity/auth/google/callback');
+        IdentityHostedApplication::query()->create([
+            'project_id' => $project->id, 'primary_client_id' => $client->id, 'key' => 'example-page-set', 'name' => 'Example Application',
+            'application_url' => 'https://example-app.example.test', 'callback_url' => 'https://example-app.example.test/callback',
+            'authentication_mode' => 'app', 'password_reset_url' => 'https://example-app.example.test/reset',
+            'authentication' => ['google_enabled' => true], 'status' => 'active',
+        ]);
+        Http::fake(['https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'google-provider-token'])]);
+        $remote = new OAuthUser('google-user-1', 'Google User', $user->email, 'google-provider-token', null, null);
+        $this->mock(OAuthGateway::class, function ($mock) use ($remote): void {
+            $mock->shouldReceive('fetchUser')->with('google', 'google-provider-token')->andReturn($remote);
+        });
+        $input = ['client_id' => $client->id, 'client_secret' => $secret, 'application_key' => 'example-page-set',
+            'redirect_uri' => 'https://example-app.example.test/callback', 'state' => str_repeat('s', 64)];
+        $url = $this->postJson('/api/v1/identity/auth/google/authorize', $input)->assertOk()->json('data.redirect_url');
+        parse_str(parse_url($url, PHP_URL_QUERY), $query);
+        $callback = $this->get('/api/v1/identity/auth/google/callback?'.http_build_query(['state' => $query['state'], 'code' => 'provider-code']))->assertRedirect();
+        parse_str(parse_url($callback->headers->get('Location'), PHP_URL_QUERY), $delivery);
+        $exchange = $this->postJson('/api/v1/identity/auth/handoff/exchange', [
+            'client_id' => $client->id, 'client_secret' => $secret, 'redirect_uri' => $input['redirect_uri'], 'code' => $delivery['code'],
+        ])->assertOk()->assertJsonPath('data.identity.user.id', $user->id)->json('data');
+        $url = $this->withToken($exchange['access_token'])->postJson('/api/v1/identity/auth/google/authorize', $input + ['sensitive_operation' => 'export'])->assertOk()->json('data.redirect_url');
+        parse_str(parse_url($url, PHP_URL_QUERY), $query);
+        $callback = $this->get('/api/v1/identity/auth/google/callback?'.http_build_query(['state' => $query['state'], 'code' => 'fresh-provider-code']))->assertRedirect();
+        parse_str(parse_url($callback->headers->get('Location'), PHP_URL_QUERY), $delivery);
+        $grant = $this->postJson('/api/v1/identity/auth/handoff/exchange', [
+            'client_id' => $client->id, 'client_secret' => $secret, 'redirect_uri' => $input['redirect_uri'], 'code' => $delivery['code'],
+        ])->assertOk()->assertJsonMissingPath('data.access_token')->assertJsonPath('data.reauthentication.operation', 'export')->json('data.reauthentication.grant');
+        $this->assertNotNull(PersonalAccessToken::findToken($exchange['access_token']));
+        $this->withToken($exchange['access_token'])->withHeader('X-Identity-Reauthentication', $grant)
+            ->postJson('/api/v1/identity/auth/account/export')->assertOk()->assertJsonPath('data.account_export.account.id', $user->id);
+        $this->postJson('/api/v1/identity/auth/handoff/exchange', [
+            'client_id' => $client->id, 'client_secret' => $secret, 'redirect_uri' => $input['redirect_uri'], 'code' => $delivery['code'],
+        ])->assertUnauthorized();
+    }
+
+    public function test_versioned_profile_export_and_shared_deletion_require_fresh_authentication(): void
+    {
+        if (Schema::hasColumn('users', 'provider_id')) {
+            Schema::table('users', static function (Blueprint $table): void {
+                $table->dropColumn('provider_id');
+            });
+        }
+        $this->assertFalse(Schema::hasColumn('users', 'provider_id'));
+
+        [$user, $project, $client, $secret] = $this->identityFixture();
+        $session = $this->login($user, $project, $client, $secret);
+        $grant = function (string $operation) use ($session, $client, $secret): string {
+            return $this->withToken($session['access_token'])->postJson('/api/v1/identity/auth/reauthenticate', [
+                'client_id' => $client->id, 'client_secret' => $secret, 'password' => 'correct-password', 'sensitive_operation' => $operation,
+            ])->assertOk()->json('data.grant');
+        };
+        $profileGrant = $grant('profile');
+        $this->withToken($session['access_token'])->withHeader('X-Identity-Reauthentication', $profileGrant)
+            ->putJson('/api/v1/identity/auth/account/profile', ['username' => 'Updated Profile', 'email' => $user->email, 'avatar_url' => null])->assertOk();
+        $this->assertDatabaseHas('identity_project_accounts', ['project_id' => $project->id, 'user_id' => $user->id, 'username' => 'Updated Profile']);
+        $this->travel(1)->minutes();
+        $exportGrant = $grant('export');
+        $this->withToken($session['access_token'])->withHeader('X-Identity-Reauthentication', $exportGrant)
+            ->postJson('/api/v1/identity/auth/account/export')->assertOk()->assertJsonPath('data.account_export.account.id', $user->id);
+
+        DB::table('sessions')->insert([
+            'id' => 'unrelated-laravel-session',
+            'user_id' => 0,
+            'payload' => '',
+            'last_activity' => now()->timestamp,
+        ]);
+        $this->travel(1)->minutes();
+        $deleteGrant = $grant('delete_account');
+        $this->withToken($session['access_token'])->withHeader('X-Identity-Reauthentication', $deleteGrant)
+            ->deleteJson('/api/v1/identity/auth/account')->assertOk();
+        $this->assertDatabaseMissing('users', ['id' => $user->id]);
+        $this->assertDatabaseHas('sessions', ['id' => 'unrelated-laravel-session']);
+    }
+
+    public function test_recovery_uses_an_enabled_application_page_set_and_returns_a_generic_response(): void
+    {
+        [$user, $project, $client, $secret] = $this->identityFixture();
+        config()->set('zolta.identity.expose_development_tokens', false);
+        config()->set('zolta.identity.password_reset_url', 'https://identity.example.test/auth/reset-password');
+        config()->set('zolta.identity.hosted_applications.page_sets', ['default', 'example-app']);
+        Notification::fake();
+        IdentityHostedApplication::query()->create([
+            'project_id' => $project->id, 'primary_client_id' => $client->id, 'key' => 'example-app', 'name' => 'Example Application',
+            'application_url' => 'https://example-app.example.test', 'callback_url' => 'https://example-app.example.test/callback',
+            'authentication_mode' => 'app', 'auth_page_set' => 'example-app', 'status' => 'active',
+        ]);
+        $body = ['client_id' => $client->id, 'client_secret' => $secret, 'email' => $user->email, 'reset_url' => 'https://evil.example/reset'];
+        $known = $this->postJson('/api/v1/identity/auth/password/forgot', $body)->assertOk()->json('data');
+        $unknown = $this->postJson('/api/v1/identity/auth/password/forgot', array_replace($body, ['email' => 'unknown@example.test']))->assertOk()->json('data');
+        $this->assertSame($known, $unknown);
+        Notification::assertSentTo($user, ResetIdentityPassword::class, function ($notification) use ($user): bool {
+            $resetUrl = (string) $notification->toMail($user)->viewData['resetUrl'];
+
+            return str_starts_with($resetUrl, 'https://identity.example.test/auth/example-app/reset-password?')
+                && ! str_starts_with($resetUrl, 'https://example-app.example.test/');
+        });
+    }
+
     /** @return array{User, IdentityProject, IdentityProjectClient, string, IdentityProjectMembership} */
     private function identityFixture(bool $isAdmin = false): array
     {
@@ -1819,8 +2223,8 @@ final class IdentityAccessServiceTest extends TestCase
             'email_verified_at' => now(),
         ]);
         $project = IdentityProject::query()->create([
-            'name' => 'Portfolio',
-            'slug' => 'portfolio-'.Str::random(6),
+            'name' => 'Example Application',
+            'slug' => 'example-app-'.Str::random(6),
             'status' => 'active',
             'mode' => 'live',
             'sandbox_ttl_minutes' => 60,
@@ -1829,7 +2233,7 @@ final class IdentityAccessServiceTest extends TestCase
         $secret = Str::random(64);
         $client = IdentityProjectClient::query()->create([
             'project_id' => $project->id,
-            'name' => 'Portfolio BFF',
+            'name' => 'Example Application BFF',
             'secret_hash' => hash('sha256', $secret),
             'secret_prefix' => Str::substr($secret, 0, 8),
             'status' => 'active',

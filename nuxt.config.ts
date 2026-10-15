@@ -7,11 +7,15 @@ const viteAllowedHosts = [
     .filter(Boolean)
 ]
 
+const hostedAuthIntegrations = (process.env.IDENTITY_HOSTED_AUTH_INTEGRATIONS ?? '')
+  .split(',')
+  .map(path => path.trim())
+  .filter(Boolean)
+
 export default defineNuxtConfig({
   extends: [
     './layers/auth/default-pages',
-    './layers/auth/hosted-pages/starter',
-    './layers/auth/hosted-pages/projects',
+    ...hostedAuthIntegrations,
     './layers/admin',
     './packages/i18n',
     './packages/ui'
@@ -51,9 +55,6 @@ export default defineNuxtConfig({
       failOnError: true
     }
   },
-  routeRules: {
-    '/': { redirect: { to: '/admin/sign-in', statusCode: 302 } }
-  },
   eslint: {
     config: {
       stylistic: {
@@ -67,6 +68,12 @@ export default defineNuxtConfig({
   },
   vite: {
     plugins: [],
+    optimizeDeps: {
+      // The i18n runtime imports Nuxt-generated #components aliases. The
+      // dependency scanner treats those imports as package exports before
+      // Nuxt's alias plugin runs, so let Vite transform i18n at request time.
+      exclude: ['@nuxtjs/i18n']
+    },
     server: {
       allowedHosts: viteAllowedHosts,
       watch: {

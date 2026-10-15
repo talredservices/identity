@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE=".env.docker.local"
+OWNER_FILE=".identity-owner.credentials"
+COMPOSE_FILE="compose.yaml"
+
+cd "$ROOT_DIR"
+
+usage() {
+  cat <<'EOF'
+Usage: ./scripts/docker-local <command>
+
+Commands:
+  prepare  Generate private local settings without starting services
+  up       Create local secrets if needed, migrate, bootstrap, and start Identity
+  down     Stop and remove containers while preserving local data volumes
+  status   Show the local Compose service status
+  logs     Follow service logs
+EOF
+}
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required. Install Docker Engine with Compose v2, then retry." >&2
+  exit 1
+fi
+
+compose() {
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+create_local_env() {
+  local project_suffix client_uuid raw_uuid owner_password
+  project_suffix="$(openssl rand -hex 6)"
+  raw_uuid="$(openssl rand -hex 16)"
+  client_uuid="${raw_uuid:0:8}-${raw_uuid:8:4}-4${raw_uuid:13:3}-a${raw_uuid:17:3}-${raw_uuid:20:12}"
+  owner_password="$(openssl rand -hex 24)"
+
+  umask 077
+  cat > "$ENV_FILE" <<EOF
+# Generated for this local Docker installation. Keep private and do not commit.
+COMPOSE_PROJECT_NAME=talred-identity-local-${project_suffix}
+IDENTITY_ENV_FILE=${ENV_FILE}
+IDENTITY_BIND_ADDRESS=127.0.0.1
+IDENTITY_API_PUBLIC_URL=http://127.0.0.1:8100
+IDENTITY_CONSOLE_PUBLIC_URL=http://127.0.0.1:3100
+IDENTITY_API_PORT=8100
+IDENTITY_CONSOLE_PORT=3100
+IDENTITY_PASSWORD_RESET_URL=http://127.0.0.1:3100/auth/reset-password
+IDENTITY_PROJECT=identity-console
+IDENTITY_CLIENT_ID=${client_uuid}
+IDENTITY_CLIENT_SECRET=$(openssl rand -hex 32)
+IDENTITY_HOSTED_APPLICATIONS_TOKEN=$(openssl rand -hex 32)
+NUXT_SESSION_PASSWORD=$(openssl rand -hex 32)
+APP_KEY="base64:$(openssl rand -base64 32 | tr -d '\n')"
+DB_DATABASE=talred_identity
+DB_USERNAME=talred_identity
+DB_PASSWORD=$(openssl rand -hex 32)
+MYSQL_ROOT_PASSWORD=$(openssl rand -hex 32)
+APP_NAME="Talred Identity"
+MAIL_MAILER=log
+MAIL_FROM_ADDRESS=identity@example.test
+MAIL_FROM_NAME="Talred Identity"
+LOG_CHANNEL=stderr
+EOF
+  cat > "$OWNER_FILE" <<EOF
+email=owner@example.test
+password=${owner_password}
+EOF
+  chmod 600 "$ENV_FILE"
+  chmod 600 "$OWNER_FILE"
+  echo "Created private local settings in ${ENV_FILE} and ${OWNER_FILE}."
+}
+
+ensure_local_env() {
+  if [[ ! -f "$ENV_FILE" ]]; then
+    create_local_env
+  fi
+  if [[ ! -r "$ENV_FILE" ]]; then
+    echo "Cannot read ${ENV_FILE}. Check its permissions." >&2
+    exit 1
+  fi
+  if [[ ! -r "$OWNER_FILE" ]]; then
+    echo "Cannot read ${OWNER_FILE}. Restore it from your private backup or use the documented owner-recovery flow." >&2
+    exit 1
+  fi
+  chmod 600 "$ENV_FILE"
+  chmod 600 "$OWNER_FILE"
+}
+
+require_local_env() {
+  if [[ ! -f "$ENV_FILE" ]]; then
+    echo "No local Docker installation was found. Run ./scripts/docker-local up first." >&2
+    exit 1
+  fi
+  if [[ ! -r "$ENV_FILE" ]]; then
+    echo "Cannot read ${ENV_FILE}. Check its permissions." >&2
+    exit 1
+  fi
+  chmod 600 "$ENV_FILE"
+}
+
+start_local() {
+  command -v openssl >/dev/null 2>&1 || {
+    echo "OpenSSL is required to create local secrets." >&2
+    exit 1
+  }
+  ensure_local_env
+
+  local owner_email owner_password client_secret client_id
+  local -a build_args=()
+  case "${IDENTITY_LOCAL_DOCKER_BUILD:-1}" in
+    1) build_args=(--build) ;;
+    0) ;;
+    *) echo "IDENTITY_LOCAL_DOCKER_BUILD must be 1 or 0." >&2; exit 1 ;;
+  esac
+  owner_email="$(sed -n 's/^email=//p' "$OWNER_FILE" | head -n 1)"
+  owner_password="$(sed -n 's/^password=//p' "$OWNER_FILE" | head -n 1)"
+  client_secret="$(sed -n 's/^IDENTITY_CLIENT_SECRET=//p' "$ENV_FILE" | head -n 1)"
+  client_id="$(sed -n 's/^IDENTITY_CLIENT_ID=//p' "$ENV_FILE" | head -n 1)"
+  if [[ -z "$owner_email" || -z "$owner_password" || -z "$client_secret" || -z "$client_id" ]]; then
+    echo "The local settings files are incomplete. Restore them from your private backup or use the documented owner-recovery flow." >&2
+    exit 1
+  fi
+
+  echo "Starting the local database and cache..."
+  compose up -d mysql redis
+
+  echo "Applying database migrations..."
+  compose --profile tools run --rm "${build_args[@]}" migrate
+
+  echo "Checking the initial Identity owner and console client..."
+  compose run --rm "${build_args[@]}" api php artisan identity:bootstrap "$owner_email" --name="Identity Owner" --password "$owner_password" --client-id "$client_id" --client-secret "$client_secret" --hide-client-secret --if-needed
+
+  echo "Building and starting the Identity API, workers, and console..."
+  compose up -d "${build_args[@]}"
+  echo "Local Identity is running at http://127.0.0.1:3100/admin/sign-in"
+  echo "API health endpoint: http://127.0.0.1:8100/up"
+  echo "Owner email: ${owner_email}"
+  echo "Read the generated owner password from ${OWNER_FILE}. Local secrets are mode 600 and git-ignored."
+}
+
+command_name="${1:-help}"
+case "$command_name" in
+  prepare)
+    command -v openssl >/dev/null 2>&1 || {
+      echo "OpenSSL is required to create local secrets." >&2
+      exit 1
+    }
+    ensure_local_env
+    ;;
+  up)
+    start_local
+    ;;
+  down)
+    require_local_env
+    compose down
+    ;;
+  status)
+    require_local_env
+    compose ps
+    ;;
+  logs)
+    require_local_env
+    shift || true
+    compose logs --follow --tail=100 "$@"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

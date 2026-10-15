@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve Laravel Zolta Identity.
+Thanks for helping improve Laravel Talred Identity.
 
 ## Development workflow
 

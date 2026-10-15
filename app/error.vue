@@ -7,7 +7,6 @@ const props = defineProps<{
 
 const { locale, t } = useI18n()
 const localePath = useLocalePath()
-const session = useUserSession()
 const statusCode = computed(() => props.error.statusCode || 500)
 const isNotFound = computed(() => statusCode.value === 404)
 const title = computed(() => isNotFound.value
@@ -16,9 +15,37 @@ const title = computed(() => isNotFound.value
 const description = computed(() => isNotFound.value
   ? t('error.notFoundDescription')
   : t('error.genericDescription'))
-const recoveryPath = computed(() => session.loggedIn.value
-  ? localePath('/dashboard')
-  : localePath('/'))
+const config = useRuntimeConfig()
+const route = useRoute()
+const hostedApplication = computed(() =>
+  typeof route.query.application === 'string' ? route.query.application : null
+)
+const { data: hostedReturnUrl } = await useAsyncData(
+  'identity-error-hosted-return-url',
+  async () => {
+    if (!hostedApplication.value) return null
+
+    try {
+      const response = await $fetch<{ application?: { returnUrl?: string } }>(
+        '/api/hosted-auth/application',
+        { query: { application: hostedApplication.value } }
+      )
+
+      return response.application?.returnUrl ?? null
+    } catch {
+      return null
+    }
+  },
+  { watch: [hostedApplication] }
+)
+const recoveryPath = computed(() => {
+  const publicHost = config.public.identityAdmin.publicHost.trim().toLowerCase()
+  const host = useRequestURL().hostname.toLowerCase()
+
+  return host === publicHost
+    ? localePath('/auth/login')
+    : localePath('/admin/sign-in')
+})
 
 useHead({
   htmlAttrs: { lang: locale }
@@ -30,6 +57,12 @@ useSeoMeta({
 })
 
 async function recover() {
+  if (hostedReturnUrl.value) {
+    await clearError()
+    window.location.assign(hostedReturnUrl.value)
+    return
+  }
+
   await clearError({ redirect: recoveryPath.value })
 }
 
@@ -46,7 +79,7 @@ function reload() {
         class="w-full max-w-xl"
       >
         <div class="flex flex-col items-center text-center gap-6 py-6">
-          <AppLogo class="h-8 w-auto" />
+          <IdentityAuthBrandMark size="header" />
 
           <div class="space-y-3">
             <p class="text-sm font-semibold text-primary">

@@ -124,6 +124,25 @@ final readonly class EloquentIdentityProjectService implements ConfigureIdentity
             ->all();
     }
 
+    public function listApplications(string $actorUserId): array
+    {
+        $user = User::query()->findOrFail($actorUserId);
+        $query = IdentityHostedApplication::query()
+            ->with('project:id,name,slug,status,mode')
+            ->orderBy('name')
+            ->orderBy('id');
+
+        if (! $user->is_system_admin) {
+            $query->whereHas('project.memberships', fn (Builder $builder) => $builder
+                ->where('user_id', $actorUserId)
+                ->where('status', 'active'));
+        }
+
+        return $query->get()
+            ->map(fn (IdentityHostedApplication $application) => $this->payloads->hostedApplicationDirectoryItem($application))
+            ->all();
+    }
+
     public function createProject(string $actorUserId, array $attributes): array
     {
         $this->authorization->assertInstallationAdministrator($actorUserId);
@@ -500,6 +519,9 @@ final readonly class EloquentIdentityProjectService implements ConfigureIdentity
                 'name' => $attributes['name'],
                 'application_url' => $attributes['application_url'],
                 'callback_url' => $attributes['callback_url'],
+                'authentication_mode' => $attributes['authentication_mode'] ?? 'hosted',
+                'password_reset_url' => $attributes['password_reset_url'] ?? null,
+                'policy_revision' => $attributes['policy_revision'] ?? null,
                 'auth_page_set' => $attributes['auth_page_set'] ?? 'default',
                 'appearance' => $this->hostedApplicationAppearance($attributes),
                 'authentication' => $this->hostedApplicationAuthentication($attributes),
@@ -527,6 +549,11 @@ final readonly class EloquentIdentityProjectService implements ConfigureIdentity
     ): void {
         $this->authorization->assertProjectAdministrator($actorUserId, $projectId);
         $application = $this->findHostedApplication($projectId, $applicationId);
+        $attributes = array_replace([
+            'authentication_mode' => $application->authentication_mode,
+            'password_reset_url' => $application->password_reset_url,
+            'policy_revision' => $application->policy_revision,
+        ], $attributes);
         $this->validateHostedApplicationClients($actorUserId, $projectId, $attributes);
         $application->fill([
             'name' => $attributes['name'],
@@ -534,9 +561,12 @@ final readonly class EloquentIdentityProjectService implements ConfigureIdentity
             'sandbox_client_id' => $attributes['sandbox_client_id'] ?? null,
             'application_url' => $attributes['application_url'],
             'callback_url' => $attributes['callback_url'],
-            'auth_page_set' => $attributes['auth_page_set'] ?? 'default',
-            'appearance' => $this->hostedApplicationAppearance($attributes),
-            'authentication' => $this->hostedApplicationAuthentication($attributes),
+            'authentication_mode' => $attributes['authentication_mode'],
+            'password_reset_url' => $attributes['password_reset_url'],
+            'policy_revision' => $attributes['policy_revision'],
+            'auth_page_set' => $attributes['auth_page_set'] ?? $application->auth_page_set,
+            'appearance' => array_key_exists('appearance', $attributes) ? $this->hostedApplicationAppearance($attributes) : $application->appearance,
+            'authentication' => array_key_exists('authentication', $attributes) ? $this->hostedApplicationAuthentication($attributes) : $application->authentication,
             'status' => $attributes['status'],
         ])->save();
         $this->audit->record(
@@ -705,6 +735,29 @@ final readonly class EloquentIdentityProjectService implements ConfigureIdentity
         );
 
         return $this->payloads->clientAggregate($client) + ['client_secret' => $secret];
+    }
+
+    public function renameClient(
+        string $actorUserId,
+        string $projectId,
+        string $clientId,
+        string $name,
+    ): array {
+        $this->authorization->assertProjectAdministrator($actorUserId, $projectId);
+        $client = $this->findClient($projectId, $clientId);
+        $client->changeName($name);
+        $this->clientAggregates->save($client);
+        $this->audit->record(
+            'client.renamed',
+            $projectId,
+            $clientId,
+            $actorUserId,
+            'client',
+            $clientId,
+            ['name' => $client->name()],
+        );
+
+        return $this->payloads->clientAggregate($client);
     }
 
     public function setClientStatus(
@@ -1376,6 +1429,10 @@ final readonly class EloquentIdentityProjectService implements ConfigureIdentity
         return [
             'key' => $application->key,
             'name' => $application->name,
+            'project' => [
+                'name' => $application->project->name,
+                'slug' => $application->project->slug,
+            ],
             'application_url' => $application->application_url,
             'callback_url' => $application->callback_url,
             'auth_page_set' => $application->auth_page_set ?: 'default',
@@ -1451,6 +1508,28 @@ final readonly class EloquentIdentityProjectService implements ConfigureIdentity
         string $projectId,
         array $attributes,
     ): void {
+        $origin = static fn (string $url): array => [
+            strtolower((string) parse_url($url, PHP_URL_SCHEME)),
+            strtolower((string) parse_url($url, PHP_URL_HOST)),
+            parse_url($url, PHP_URL_PORT) ?? (parse_url($url, PHP_URL_SCHEME) === 'https' ? 443 : 80),
+        ];
+        foreach (['callback_url', 'password_reset_url'] as $endpoint) {
+            $url = $attributes[$endpoint] ?? null;
+            if ($url !== null && ($origin($url) !== $origin($attributes['application_url'])
+                || parse_url($url, PHP_URL_USER) !== null || parse_url($url, PHP_URL_PASS) !== null
+                || parse_url($url, PHP_URL_FRAGMENT) !== null || parse_url($url, PHP_URL_QUERY) !== null)) {
+                throw new IdentityAuthorizationException('Application endpoints must use the registered application origin without credentials or fragments.');
+            }
+        }
+        if (($attributes['authentication_mode'] ?? 'hosted') === 'app' && empty($attributes['password_reset_url'])) {
+            throw new IdentityAuthorizationException('App authentication requires a registered password recovery endpoint.');
+        }
+
+        if (($attributes['authentication_mode'] ?? 'hosted') === 'app'
+            && ($attributes['authentication']['terms_required'] ?? false) && empty($attributes['policy_revision'])) {
+            throw new IdentityAuthorizationException('Application terms require an approved policy revision.');
+        }
+
         $primary = IdentityProjectClient::query()
             ->with('project')
             ->where('project_id', $projectId)

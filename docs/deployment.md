@@ -2,6 +2,8 @@
 
 This repository ships a production-oriented Docker Compose stack for the Laravel API, queue worker, scheduler, MySQL, Redis, Nginx, and the Nuxt SSR console. Put a TLS reverse proxy such as Caddy, Traefik, or a managed load balancer in front of the exposed API and console ports.
 
+The example binds published ports to `127.0.0.1` for a reverse proxy on the same host. Set `IDENTITY_BIND_ADDRESS=0.0.0.0` only when a remote proxy or load balancer must reach the ports, and restrict access with the host firewall.
+
 ## Prerequisites
 
 - Docker Engine with Docker Compose v2

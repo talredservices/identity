@@ -36,7 +36,7 @@ const refreshRequests = refreshRegistry.__zoltaIdentityRefreshRequests
 const refreshDeduplicationWindowMs = 5_000
 const identityPrefix = '/api/v1/identity'
 
-function identityConfiguration(event: H3Event, connection: IdentityConnectionName = 'primary'): IdentityConfiguration {
+export function identityConfiguration(event: H3Event, connection: IdentityConnectionName = 'primary'): IdentityConfiguration {
   const runtimeConfig = useRuntimeConfig(event)
   const rootIdentity = runtimeConfig.identity
   const identity = connection === 'sandbox' ? rootIdentity.sandbox : rootIdentity
@@ -394,11 +394,18 @@ export async function identityLogout(event: H3Event): Promise<void> {
       const connection = (session.secure?.identityConnection ?? 'primary') as IdentityConnectionName
       const config = identityConfiguration(event, connection)
       const target = identityRequestTarget(config, '/auth/logout')
-      await $fetch(target.path, {
-        baseURL: target.baseURL,
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}` }
-      })
+      try {
+        await $fetch(target.path, {
+          baseURL: target.baseURL,
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}` }
+        })
+      } catch (error: unknown) {
+        const status = (error as { response?: { status?: number } }).response?.status
+
+        // An expired or revoked Identity token is already signed out upstream.
+        if (status !== 401) throw error
+      }
     }
   } finally {
     await clearUserSession(event)

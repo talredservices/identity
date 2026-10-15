@@ -1,5 +1,8 @@
 declare module '@nuxt/schema' {
   interface PublicRuntimeConfig {
+    identityAdmin: {
+      publicHost: string
+    }
     identityAuth: {
       productName: string
       loginRedirect: string
@@ -11,6 +14,10 @@ declare module '@nuxt/schema' {
   }
 
   interface RuntimeConfig {
+    admin: {
+      publicHost: string
+      host: string
+    }
     identity: {
       apiUrl: string
       project: string

@@ -28,6 +28,11 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'platform_onboarding' => [
+        'client_id' => env('PLATFORM_ONBOARDING_CLIENT_ID'),
+        'login_project_slug' => env('PLATFORM_LOGIN_IDENTITY_PROJECT', 'identity-console'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
@@ -36,6 +41,7 @@ return [
     ],
 
     'google' => [
+        'identity_redirect' => env('GOOGLE_IDENTITY_REDIRECT_URI', rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/identity/auth/google/callback'),
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
         'redirect' => env(

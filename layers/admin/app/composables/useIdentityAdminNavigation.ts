@@ -16,16 +16,40 @@ export function useIdentityAdminNavigation(
   const onSelect = () => closeSidebar?.()
 
   const primaryLinks = computed<NavigationMenuItem[][]>(() => {
+    const overviewPath = localePath('/admin')
     const projectsPath = localePath('/admin/projects')
+    const clientsPath = localePath('/admin/clients')
+    const applicationsPath = localePath('/admin/applications')
     const installationUsersPath = localePath('/admin/identity-users')
     const accessCatalogPath = localePath('/admin/access-catalog')
 
     const workspaceItems: NavigationMenuItem[] = [
       {
+        label: t('identityConsole.nav.overview'),
+        icon: 'i-lucide-house',
+        to: overviewPath,
+        active: route.path === overviewPath,
+        onSelect
+      },
+      {
         label: t('identityConsole.nav.projects'),
-        icon: 'i-lucide-layout-dashboard',
+        icon: 'i-lucide-folder-key',
         to: projectsPath,
         active: route.path === projectsPath || route.path.startsWith(`${projectsPath}/`),
+        onSelect
+      },
+      {
+        label: t('identityConsole.nav.clients'),
+        icon: 'i-lucide-key-round',
+        to: clientsPath,
+        active: route.path === clientsPath || route.path.startsWith(`${clientsPath}/`),
+        onSelect
+      },
+      {
+        label: t('identityConsole.nav.applications'),
+        icon: 'i-lucide-panels-top-left',
+        to: applicationsPath,
+        active: route.path === applicationsPath || route.path.startsWith(`${applicationsPath}/`),
         onSelect
       }
     ]
@@ -58,7 +82,13 @@ export function useIdentityAdminNavigation(
   })
 
   const secondaryLinks = computed<NavigationMenuItem[][]>(() => {
-    return []
+    return [[{
+      label: t('identityConsole.nav.account'),
+      icon: 'i-lucide-user-cog',
+      to: localePath('/admin/account'),
+      active: route.path === localePath('/admin/account'),
+      onSelect
+    }]]
   })
 
   const searchGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => [{

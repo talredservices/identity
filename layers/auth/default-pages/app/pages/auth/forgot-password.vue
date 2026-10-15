@@ -18,10 +18,13 @@ type ForgotPasswordSchema = z.output<typeof schema>
 const fields = [{ name: 'email', type: 'email' as const, label: 'Email', placeholder: 'you@example.com', required: true, autocomplete: 'email' }]
 const pending = ref(false)
 const successMessage = ref('')
+const errorMessage = ref('')
 
 async function submit({ data }: FormSubmitEvent<ForgotPasswordSchema>) {
+  if (pending.value) return
   pending.value = true
   successMessage.value = ''
+  errorMessage.value = ''
 
   try {
     if (hostedApplication.value) {
@@ -34,12 +37,10 @@ async function submit({ data }: FormSubmitEvent<ForgotPasswordSchema>) {
     }
     successMessage.value = 'If that account exists, password reset instructions have been sent.'
   } catch (error) {
+    errorMessage.value = identityAuthErrorMessage(error, 'We could not request a password reset. Please try again.')
     toast.add({
       title: 'Unable to request a password reset',
-      description: identityAuthErrorMessage(
-        error,
-        'We could not request a password reset.'
-      ),
+      description: errorMessage.value,
       color: 'error'
     })
   } finally {
@@ -49,35 +50,48 @@ async function submit({ data }: FormSubmitEvent<ForgotPasswordSchema>) {
 </script>
 
 <template>
-  <UAuthForm
-    class="identity-auth-form-shell"
-    :fields="fields"
-    :schema="schema"
-    :validate-on="['input']"
-    title="Reset your password"
-    description="Enter your email address and we will send the reset instructions."
-    icon="i-lucide-key-round"
-    :submit="{ label: 'Send reset instructions', loading: pending }"
-    @submit="submit"
-  >
-    <template #header>
-      <IdentityAuthFormHeader
-        title="Reset your password"
-        description="Enter your email address and we will send the reset instructions."
-      />
-    </template>
-    <template #validation>
-      <p
-        v-if="successMessage"
-        class="identity-auth-success"
-      >
-        {{ successMessage }}
-      </p>
-    </template>
-    <template #footer>
-      <NuxtLink :to="{ ...identityAuthPagePath('login', route.params.pageSet, hostedApplication ? { application: hostedApplication, state: route.query.state } : {}) }">
-        Return to sign in
-      </NuxtLink>
-    </template>
-  </UAuthForm>
+  <div class="identity-auth-form-stack">
+    <UAlert
+      v-if="errorMessage"
+      color="error"
+      title="Password reset not requested"
+      :description="errorMessage"
+      role="alert"
+    />
+    <UAlert
+      v-if="successMessage"
+      color="success"
+      variant="soft"
+      icon="i-lucide-mail-check"
+      title="Check your email"
+      description="If that account exists, password reset instructions have been sent. Check your spam folder if you do not see the email soon."
+      role="status"
+      aria-live="polite"
+      class="identity-auth-success"
+      :ui="{ title: 'text-inherit font-semibold', description: 'text-inherit', icon: 'text-inherit' }"
+    />
+
+    <UAuthForm
+      class="identity-auth-form-shell"
+      :fields="fields"
+      :schema="schema"
+      :validate-on="['input']"
+      title="Reset your password"
+      description="Enter your email address and we will send the reset instructions."
+      :submit="{ label: 'Send reset instructions', loading: pending }"
+      @submit="submit"
+    >
+      <template #header>
+        <IdentityAuthFormHeader
+          title="Reset your password"
+          description="Enter your email address and we will send the reset instructions."
+        />
+      </template>
+      <template #footer>
+        <NuxtLink :to="{ ...identityAuthPagePath('login', route.params.pageSet, hostedApplication ? { application: hostedApplication, state: route.query.state } : {}) }">
+          Return to sign in
+        </NuxtLink>
+      </template>
+    </UAuthForm>
+  </div>
 </template>

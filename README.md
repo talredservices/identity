@@ -1,9 +1,11 @@
-# Laravel Zolta Identity
+# Talred Identity
 
-[![CI](https://github.com/zoltasoft/zolta-identity/actions/workflows/ci.yml/badge.svg)](https://github.com/zoltasoft/zolta-identity/actions/workflows/ci.yml)
+[![CI](https://github.com/talredservices/zolta-identity/actions/workflows/ci.yml/badge.svg)](https://github.com/talredservices/zolta-identity/actions/workflows/ci.yml)
 [![License: Apache--2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Laravel Zolta Identity is an open-source, standalone identity provider and administration console maintained by [ZoltaSoft](https://github.com/zoltasoft). It gives multiple applications a shared account system while keeping each application's business data and preferences independent.
+Talred services include this open-source, standalone identity provider and administration console, presented as Talred Identity and maintained by [Redouane Taleb](https://github.com/redouaneT). It gives multiple applications a shared account system while keeping each application's business data and preferences independent.
+
+The public brand is Talred, with hosted domain references using `talredservices.com`. The Identity application manifest and Nuxt layer use the `@talred/*` namespace in source.
 
 ## Features
 
@@ -30,6 +32,22 @@ Identity owns global account fields: email, password hash, username, avatar, ver
 
 The Nuxt application follows a layered BFF architecture: browser code calls Nuxt server routes, and those routes call the identity API. The Laravel application keeps its HTTP, application, domain, and infrastructure concerns separated inside `UserManagementService` and uses Zolta CQRS and HTTP packages for dispatch and routing.
 
+## Use Identity independently
+
+Talred Identity is a standalone service that can connect to applications built
+with any framework. Consumers create an Identity project and separate
+confidential clients for each server-side trust boundary, then use the Identity
+API for authentication, authorization, and token introspection. A consumer may
+host its own credential pages or use Identity's hosted sign-in and account
+experiences. Identity does not depend on any particular consumer application,
+repository, or database.
+
+The bundled Nuxt BFF integration is optional; any client framework can use
+Identity through its HTTP API and confidential-client flows. The [Nuxt
+integration guide](docs/nuxt-auth-consumer-layer.md) documents the BFF and
+hosted-auth flows. Consumer applications have their own lifecycle and release
+process, independent of Identity.
+
 The Nuxt package includes project-aware default authentication pages. Live
 projects receive the permanent-account login, registration, verification, and
 recovery experience. Sandbox projects receive an automatically provisioned,
@@ -46,7 +64,7 @@ session; the consumer application never receives those sensitive payloads.
 ## Requirements
 
 - Node.js `^22.12`, `^24.11`, or `>=26` (matching Nuxt's supported release lines)
-- pnpm 10.30+
+- pnpm 11.21+
 - PHP 8.3 or newer
 - Composer 2
 - SQLite for local development, or MySQL/PostgreSQL in hosted environments
@@ -56,7 +74,7 @@ session; the consumer application never receives those sensitive payloads.
 Clone the repository, then set up the Laravel API:
 
 ```bash
-git clone git@github.com:zoltasoft/zolta-identity.git
+git clone https://github.com/talredservices/zolta-identity.git
 cd zolta-identity
 ```
 
@@ -114,6 +132,46 @@ Copy both committed environment examples and keep the resulting `.env` files loc
 
 For production, set `APP_ENV=production`, `APP_DEBUG=false`, secure HTTPS URLs, persistent cache and queue backends, and a production database. Keep every client secret in the hosting platform's secret manager rather than a committed file.
 
+## Run locally with Docker
+
+With Docker Engine, Compose v2, Bash, and OpenSSL installed, run this from the
+repository root (Windows users can use WSL):
+
+```bash
+./scripts/docker-local up
+```
+
+On first run, the script creates private per-installation secrets and a local
+owner account, migrates the database, then builds and starts the API, background
+workers, scheduler, and console. Read the generated login in the ignored,
+mode-600 `.identity-owner.credentials` file. Open
+`http://127.0.0.1:3100/admin/sign-in` to sign in. The API health endpoint is
+`http://127.0.0.1:8100/up`. Local mail is logged by the API container; no SMTP
+service is required.
+
+```bash
+cat .identity-owner.credentials
+```
+
+This setup is for local evaluation only. Its ports bind to loopback and it is
+not configured for production traffic.
+
+The Docker services bind to loopback, and the database, Redis data, and uploaded
+files persist in Compose-managed volumes. Generated service secrets and the
+owner login are kept in ignored, mode-600 `.env.docker.local` and
+`.identity-owner.credentials` files. Both files are excluded from Git and the
+Docker build context. Do not commit or share them.
+
+```bash
+./scripts/docker-local status
+./scripts/docker-local logs
+./scripts/docker-local down
+```
+
+`down` removes containers but preserves data volumes. Docker Compose builds the
+images from this repository, so this path does not use a Talred workspace or
+pre-published container images.
+
 ## Docker production stack
 
 The repository includes a production-oriented Compose stack with MySQL, Redis, the Laravel API, a queue worker, scheduler, Nginx, and the Nuxt SSR console. Copy `.env.production.example` to an untracked `.env.production`, replace every placeholder through your secret manager, and follow [the deployment guide](docs/deployment.md). The API and console must be placed behind HTTPS before accepting public traffic.
@@ -145,17 +203,17 @@ The application's Nuxt BFF must use a separate confidential client. Do not put e
 
 ### Reusable Nuxt authentication layer
 
-The `@zoltasoft/identity-nuxt` workspace package is the supported Nuxt BFF
+The `@talred/identity-nuxt` workspace package is the supported Nuxt BFF
 integration. It owns the encrypted identity session, CSRF-protected
 `/api/auth/*` routes, token rotation, a route middleware, and
-`useIdentityAuth()`. It also exports `@zoltasoft/identity-nuxt/server` for an
+`useIdentityAuth()`. It also exports `@talred/identity-nuxt/server` for an
 application that uses hosted Identity pages and wants only the server-side
 token/session adapter without composing embedded credential routes. It has two
 full-layer entries:
 
-- `@zoltasoft/identity-nuxt` is headless and lets an application keep fully
+- `@talred/identity-nuxt` is headless and lets an application keep fully
   custom login, signup, recovery, reset, and verification pages.
-- `@zoltasoft/identity-nuxt/default-pages` adds a ready-to-use authentication
+- `@talred/identity-nuxt/default-pages` adds a ready-to-use authentication
   interface at `/auth/login`, `/auth/register`,
   `/auth/forgot-password`, `/auth/reset-password`,
   `/auth/verify-email`, and `/auth/logout`.
@@ -164,17 +222,17 @@ Extend one entry from the consumer's `nuxt.config.ts`:
 
 ```ts
 export default defineNuxtConfig({
-  extends: ['@zoltasoft/identity-nuxt/default-pages']
+  extends: ['@talred/identity-nuxt/default-pages']
 })
 ```
 
-For custom pages, extend `@zoltasoft/identity-nuxt` instead and call
+For custom pages, extend `@talred/identity-nuxt` instead and call
 `useIdentityAuth()`. Browser code always calls the consumer's local
 `/api/auth/*` BFF routes; it never sends the confidential client secret or
 bearer tokens to the browser.
 
 For the hosted approach, do not extend either full layer. Import the server
-adapter from `@zoltasoft/identity-nuxt/server`, redirect the browser to the
+adapter from `@talred/identity-nuxt/server`, redirect the browser to the
 Identity host, and expose only an authorize route and a callback route in the
 consumer BFF.
 
@@ -240,14 +298,6 @@ Installation-wide user routes enforce `is_system_admin` inside Laravel. Project 
 
 ## Commands and checks
 
-Install the repository pre-push gate once after cloning:
-
-```bash
-./scripts/setup-git-hooks
-```
-
-`./scripts/ci fast` runs the same lint, Laravel, DCO, secret, Compose, and dependency checks used by pull requests. `./scripts/ci full` additionally builds Nuxt and every production image. Local frontend checks run in the pinned Node 24.11 Docker image; run `full` before creating or updating a PR.
-
 Run the complete local validation suite from the repository root:
 
 ```bash
@@ -305,8 +355,11 @@ This repository is the Apache-2.0 licensed community core. It is free to use, mo
 
 ## Contributing and security
 
-Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and sign each contribution under the [Developer Certificate of Origin](DCO.md). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), never through a public issue. Source, issues, and releases are hosted in the [ZoltaSoft repository](https://github.com/zoltasoft/zolta-identity).
+Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and sign each contribution under the [Developer Certificate of Origin](DCO.md). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), never through a public issue. Source, issues, and releases are hosted in the [Talred repository](https://github.com/talredservices/zolta-identity).
 
 ## License
 
 Released under the [Apache License 2.0](LICENSE). Copyright and attribution notices are in [NOTICE](NOTICE).
+
+## Ownership and brand
+Talred Identity is maintained by Redouane Taleb. Copyright, trademark, and licensing ownership for the original repository content remain with Redouane Taleb; the Apache-2.0 license grants the rights described in [LICENSE]. See [NOTICE](NOTICE) and [TRADEMARKS.md](TRADEMARKS.md) for attribution and brand-use terms.

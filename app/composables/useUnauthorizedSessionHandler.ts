@@ -21,6 +21,7 @@ function getResponseStatus(error: unknown): number | undefined {
 export function useUnauthorizedSessionHandler() {
   const session = useUserSession()
   const localePath = useLocalePath()
+  const config = useRuntimeConfig()
   const redirecting = useState('auth:redirecting', () => false)
 
   const isUnauthorizedError = (error: unknown) => getResponseStatus(error) === 401
@@ -35,7 +36,10 @@ export function useUnauthorizedSessionHandler() {
     try {
       await session.clear()
     } finally {
-      const loginPath = localePath('/admin/sign-in')
+      const publicHost = config.public.identityAdmin.publicHost.trim().toLowerCase()
+      const loginPath = window.location.hostname.toLowerCase() === publicHost
+        ? localePath('/auth/login')
+        : localePath('/admin/sign-in')
       await navigateTo(loginPath, { replace: true })
       redirecting.value = false
     }

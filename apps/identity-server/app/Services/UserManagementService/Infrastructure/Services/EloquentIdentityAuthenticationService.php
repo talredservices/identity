@@ -18,6 +18,7 @@ use App\Services\UserManagementService\Application\Exceptions\IdentityAuthentica
 use App\Services\UserManagementService\Application\Exceptions\IdentityAuthorizationException;
 use App\Services\UserManagementService\Application\Exceptions\IdentityResourceNotFoundException;
 use App\Services\UserManagementService\Domain\Aggregates\IdentityMembership as DomainIdentityMembership;
+use App\Services\UserManagementService\Domain\Enums\IdentityMembershipStatus;
 use App\Services\UserManagementService\Domain\Repositories\IdentityMembershipRepository;
 use App\Services\UserManagementService\Domain\ValueObjects\IdentityProjectId;
 use App\Services\UserManagementService\Domain\ValueObjects\IdentityRoleId;
@@ -45,6 +46,7 @@ use App\Services\UserManagementService\Infrastructure\Services\Identity\Identity
 use App\Services\UserManagementService\Infrastructure\Services\Identity\IdentityPermissionManifestSynchronizer;
 use App\Services\UserManagementService\Infrastructure\Services\Identity\IdentityTokenManager;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -95,6 +97,17 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
             ->where('user_id', $user->id)
             ->where('status', 'active')
             ->first() : null;
+
+        if ($user?->is_system_admin && (! $account || ! Hash::check((string) $credentials['password'], $account->password))) {
+            $account = $this->ensureSystemAdminProjectAccess(
+                $user,
+                $project,
+                (string) $credentials['password'],
+                $client->id,
+                $ipAddress,
+                $userAgent,
+            );
+        }
 
         if (! $user || ! $account || ! Hash::check((string) $credentials['password'], $account->password)) {
             $this->audit->record(
@@ -148,7 +161,16 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
             throw new IdentityAuthenticationException('Invalid client credentials.');
         }
 
+        $application = IdentityHostedApplication::query()->where('primary_client_id', $client->id)->where('status', 'active')->first();
+
         return [
+            'application' => $application ? [
+                'key' => $application->key,
+                'mode' => $application->authentication_mode,
+                'google_enabled' => (bool) ($application->authentication['google_enabled'] ?? false) && (bool) $client->project->google_social_authentication_enabled,
+                'terms_required' => (bool) ($application->authentication['terms_required'] ?? false),
+                'policy_revision' => $application->policy_revision,
+            ] : null,
             'project' => $this->payloads->project($client->project),
             'client' => [
                 'id' => $client->id,
@@ -250,6 +272,12 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
             }
 
             $authorizationCode->forceFill(['consumed_at' => now()])->save();
+            if ($authorizationCode->reauthentication_cipher !== null) {
+                $delivery = json_decode(Crypt::decryptString($authorizationCode->reauthentication_cipher), true, 512, JSON_THROW_ON_ERROR);
+                $authorizationCode->forceFill(['reauthentication_cipher' => null])->save();
+
+                return ['reauthentication' => $delivery];
+            }
             $tokens = $this->tokens->issuePair($user, $project, $client, $membership);
             if ($authorizationCode->source_refresh_family_id !== null) {
                 $this->tokens->revokeFamily((string) $authorizationCode->source_refresh_family_id);
@@ -447,6 +475,22 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
             (string) $attributes['client_secret'],
         );
         $project = $client->project;
+        $application = IdentityHostedApplication::query()->where('primary_client_id', $client->id)
+            ->where('status', 'active')->where('authentication_mode', 'app')->first();
+        if ($application !== null) {
+            if (($attributes['application_key'] ?? null) !== $application->key) {
+                throw new IdentityAuthenticationException('The registered application is required.');
+            }
+            $termsRequired = ($application->authentication['terms_required'] ?? false) === true;
+            if ($termsRequired && (($attributes['terms_accepted'] ?? false) !== true
+                || ! $application->policy_revision || ($attributes['policy_revision'] ?? null) !== $application->policy_revision)) {
+                throw new IdentityAuthorizationException('Acceptance of the current application terms is required.');
+            }
+            $attributes['hosted_application_id'] = $application->id;
+            $attributes['terms_required'] = $termsRequired;
+            $attributes['terms_url'] = $application->authentication['terms_url'] ?? null;
+            $attributes['policy_revision'] = $application->policy_revision;
+        }
 
         if ($project->mode === 'sandbox') {
             throw new IdentityAuthorizationException(
@@ -525,6 +569,7 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
                     'user_id' => $user->id,
                     'project_account_id' => $account->id,
                     'terms_url' => $attributes['terms_url'] ?? null,
+                    'policy_revision' => $attributes['policy_revision'] ?? null,
                     'accepted_at' => now(),
                 ]);
             }
@@ -645,6 +690,7 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
                     'user_id' => $user->id,
                     'project_account_id' => $projectAccount->id,
                     'terms_url' => $attributes['terms_url'] ?? null,
+                    'policy_revision' => $attributes['policy_revision'] ?? null,
                     'accepted_at' => now(),
                 ]);
             }
@@ -799,6 +845,10 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
         $result = ['message' => 'If that account exists, password reset instructions were sent.'];
         $user = User::query()->whereRaw('lower(email) = ?', [Str::lower($email)])->first();
 
+        if ($user?->is_system_admin) {
+            $this->ensureSystemAdminProjectAccess($user, $client->project, null, $client->id);
+        }
+
         $account = $user ? IdentityProjectAccount::query()->where('project_id', $client->project_id)->where('user_id', $user->id)->where('status', 'active')->first() : null;
 
         if (! $user || ! $account) {
@@ -810,20 +860,95 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
             ['project_account_id' => $account->id],
             ['token_hash' => $this->secretHash($token), 'created_at' => now()],
         );
-        $authPageSet = IdentityHostedApplication::query()
+        $application = IdentityHostedApplication::query()
             ->where(function ($query) use ($clientId): void {
                 $query
                     ->where('primary_client_id', $clientId)
                     ->orWhere('sandbox_client_id', $clientId);
             })
-            ->value('auth_page_set');
-        $user->notify(new ResetIdentityPassword($token, $clientId, $authPageSet));
+            ->where('status', 'active')
+            ->first();
+        $user->notify(new ResetIdentityPassword(
+            $token,
+            $clientId,
+            $application?->auth_page_set,
+            $application?->name ?: $client->project->name,
+        ));
 
         if ((bool) config('zolta.identity.expose_development_tokens', false)) {
             $result['development_token'] = $token;
         }
 
         return $result;
+    }
+
+    private function ensureSystemAdminProjectAccess(
+        User $user,
+        IdentityProject $project,
+        ?string $password,
+        string $clientId,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+    ): ?IdentityProjectAccount {
+        if (! $user->is_system_admin || ($password !== null && ! Hash::check($password, (string) $user->password))) {
+            return null;
+        }
+
+        return DB::transaction(function () use ($user, $project, $password, $clientId, $ipAddress, $userAgent): IdentityProjectAccount {
+            $account = IdentityProjectAccount::query()->firstOrNew([
+                'project_id' => $project->id,
+                'user_id' => $user->id,
+            ]);
+            $created = ! $account->exists;
+            $account->fill([
+                'username' => $user->username,
+                'status' => 'active',
+                'email_verified_at' => $account->email_verified_at ?? now(),
+                'password_changed_at' => $account->password_changed_at ?? now(),
+            ]);
+            if ($created || ($password !== null && ! Hash::check($password, (string) $account->password))) {
+                $account->password = $password ?? Str::random(64);
+                $account->password_changed_at = now();
+            }
+            $account->save();
+
+            $membership = $this->membershipAggregates->findForProjectUser(
+                IdentityProjectId::fromString($project->id),
+                new UserId((string) $user->id),
+            );
+            $membershipCreated = $membership === null;
+            if ($membershipCreated) {
+                $membership = DomainIdentityMembership::create(
+                    IdentityProjectId::fromString($project->id),
+                    new UserId((string) $user->id),
+                    true,
+                );
+            } elseif (! $membership->isAdministrator() || $membership->status() !== IdentityMembershipStatus::Active) {
+                $membership->updateAccess(
+                    $membership->roleIds(),
+                    $membership->permissionIds(),
+                    true,
+                    IdentityMembershipStatus::Active,
+                );
+            }
+            $this->membershipAggregates->save($membership);
+
+            if ($created || $membershipCreated) {
+                $this->audit->record(
+                    'auth.system_admin_project_access_provisioned',
+                    $project->id,
+                    $clientId,
+                    $user->id,
+                    'user',
+                    $user->id,
+                    ['project_access' => 'system_admin'],
+                    $ipAddress,
+                    $userAgent,
+                );
+            }
+
+            return $account;
+        });
     }
 
     public function resetPassword(
@@ -997,6 +1122,11 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
             return ['active' => false];
         }
 
+        $account = IdentityProjectAccount::query()->where('project_id', $client->project_id)->where('user_id', $user->id)->where('status', 'active')->first();
+        if (! $account || ($client->project->email_verification_required && $account->email_verified_at === null)) {
+            return ['active' => false];
+        }
+
         $token->forceFill(['last_used_at' => now()])->save();
         $client->forceFill(['last_used_at' => now()])->save();
 
@@ -1005,7 +1135,7 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
             'sub' => $user->id,
             'email' => $user->email,
             'username' => $user->username,
-            'email_verified' => $user->email_verified_at !== null,
+            'email_verified' => $account->email_verified_at !== null,
             'project_id' => $token->identity_project_id,
             'project_slug' => $client->project->slug,
             'project_mode' => $client->project->mode,
@@ -1068,6 +1198,7 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
         return IdentityRefreshToken::query()
             ->where('user_id', $userId)
             ->where('project_id', $currentToken->identity_project_id)
+            ->where('client_id', $currentToken->identity_client_id)
             ->whereNull('revoked_at')
             ->where('expires_at', '>', now())
             ->orderByDesc('created_at')
@@ -1097,6 +1228,7 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
             ->where('user_id', $userId)
             ->where('family_id', $familyId)
             ->where('project_id', $currentToken->identity_project_id)
+            ->where('client_id', $currentToken->identity_client_id)
             ->exists();
 
         if (! $owned) {
