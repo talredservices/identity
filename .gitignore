@@ -1,36 +1,76 @@
-# Nuxt
-.nuxt
-.output
-.data
-.cache
-node_modules
+# Framework output and dependencies
+.nuxt/
+.output/
+.data/
+.cache/
+node_modules/
+vendor/
+.pnpm-store/
 
-# Environment and logs
+# Local environment and package credentials
 .env
 .env.*
 !.env.example
-!.env.production.example
-*.log
+!.env.*.example
+.envrc
+.direnv/
+.npmrc
+!.npmrc.example
+.netrc
+auth.json
 
-# Local databases and test output
+# Private credentials and key material
+.identity-owner.credentials
+**/.identity-owner.credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+**/id_rsa
+**/id_ed25519
+.aws/
+.azure/
+.gcloud/
+.kube/
+.ssh/
+
+# Local databases, logs, and generated test output
 *.db
-*.sqlite
-test-results
+*.sqlite*
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+*.tsbuildinfo
+.phpunit.result.cache
+.phpunit.cache/
+apps/identity-server/bootstrap/cache/*
+!apps/identity-server/bootstrap/cache/.gitignore
 
-# Editors and operating systems
+# Editors, agents, and operating systems
 .DS_Store
-.fleet
-.idea
+Thumbs.db
+Desktop.ini
+.fleet/
+.idea/
+.cursor/
+.nova/
+.zed/
 .vscode/*
 !.vscode/settings.json
 .eslintcache
-
-/.pnpm-store/
-
-# Workspace-local agent configuration
+.codex/
+.claude/
+.ai/
 .agents/
 .mcp.json
 .zolta/
 
+# Local release output
 /.local-release/
-/.identity-owner.credentials
