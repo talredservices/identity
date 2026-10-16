@@ -5,7 +5,9 @@ import { useIdentityMutation } from '../../../app/composables/useIdentityMutatio
 type HostedBrand = {
   name: string
   returnUrl: string
-  appearance: {
+  presentation: {
+    pageSet: string
+    productName: string
     logoUrl: string | null
     accentColor: string | null
     backgroundPreset: 'identity' | 'slate' | 'indigo' | 'emerald' | 'sunset'
@@ -24,27 +26,12 @@ type HostedAccountContext = {
 
 const route = useRoute()
 const mutate = useIdentityMutation()
+const auth = useIdentityAuth()
 const colorMode = useColorMode()
 const { locale } = useI18n()
 const applicationKey = computed(() =>
   typeof route.query.application === 'string' ? route.query.application : ''
 )
-const brandStyle = computed(() => {
-  const tokens = brand.value?.appearance.designTokens ?? {}
-  const styles: Record<string, string> = {}
-
-  for (const [key, value] of Object.entries(tokens)) {
-    styles[`--identity-hosted-${key.replaceAll('_', '-')}`] = value
-    if (key.startsWith('primary_')) styles[`--ui-color-primary-${key.slice(8)}`] = value
-  }
-
-  const accent = tokens.accent ?? brand.value?.appearance.accentColor ?? '#3157d5'
-  styles['--identity-hosted-accent'] = accent
-  styles['--ui-primary'] = tokens.primary_600 ?? accent
-  styles['--ui-color-primary-500'] = tokens.primary_500 ?? accent
-  styles['--ui-color-primary-700'] = tokens.primary_700 ?? accent
-  return styles
-})
 const { data: brand } = await useAsyncData<HostedBrand | null>(
   'identity-account-brand',
   async () => {
@@ -59,7 +46,6 @@ const { data: brand } = await useAsyncData<HostedBrand | null>(
   },
   { watch: [applicationKey] }
 )
-provide('identity-account-brand', brand)
 const { data: accountContext, pending: accountContextPending } = await useFetch<HostedAccountContext>(
   '/api/hosted-account/context',
   {
@@ -69,6 +55,23 @@ const { data: accountContext, pending: accountContextPending } = await useFetch<
     watch: [applicationKey]
   }
 )
+const brandStyle = computed(() => {
+  const tokens = brand.value?.presentation.designTokens ?? {}
+  const styles: Record<string, string> = {}
+
+  for (const [key, value] of Object.entries(tokens)) {
+    styles[`--identity-hosted-${key.replaceAll('_', '-')}`] = value
+    if (key.startsWith('primary_')) styles[`--ui-color-primary-${key.slice(8)}`] = value
+  }
+
+  const accent = tokens.accent ?? brand.value?.presentation.accentColor ?? '#3157d5'
+  styles['--identity-hosted-accent'] = accent
+  styles['--ui-primary'] = tokens.primary_600 ?? accent
+  styles['--ui-color-primary-500'] = tokens.primary_500 ?? accent
+  styles['--ui-color-primary-700'] = tokens.primary_700 ?? accent
+  return styles
+})
+provide('identity-account-brand', brand)
 const loggingOut = ref(false)
 const accountUser = computed(() => accountContext.value?.user)
 const accountUserName = computed(
@@ -81,17 +84,21 @@ const accountUserAvatar = computed(() => ({
 }))
 
 const userMenuItems = computed<DropdownMenuItem[][]>(() => [
-  [{
-    type: 'label',
-    label: accountUserName.value,
-    description: accountUser.value?.email || brand.value?.name || undefined,
-    avatar: accountUserAvatar.value
-  }],
-  [{
-    label: 'Return to application',
-    icon: 'i-lucide-house',
-    onSelect: () => navigateTo(brand.value?.returnUrl ?? '/', { external: true })
-  }],
+  [
+    {
+      type: 'label',
+      label: accountUserName.value,
+      description: accountUser.value?.email || brand.value?.name || undefined,
+      avatar: accountUserAvatar.value
+    }
+  ],
+  [
+    {
+      label: 'Return to application',
+      icon: 'i-lucide-house',
+      onSelect: () => navigateTo(brand.value?.returnUrl ?? '/', { external: true })
+    }
+  ],
   [
     {
       label: 'Language',
@@ -128,13 +135,26 @@ const userMenuItems = computed<DropdownMenuItem[][]>(() => [
       ]
     }
   ],
-  [{ label: 'Log out', icon: 'i-lucide-log-out', color: 'error', onSelect: logout }]
+  [
+    {
+      label: 'Log out',
+      icon: 'i-lucide-log-out',
+      color: 'error',
+      onSelect: logout
+    }
+  ]
 ])
 
 async function logout() {
   if (loggingOut.value) return
   loggingOut.value = true
   try {
+    if (!applicationKey.value) {
+      await auth.logout()
+      await navigateTo('/auth/login')
+      return
+    }
+
     await mutate('/api/hosted-account/logout', {
       method: 'POST',
       body: { application: applicationKey.value }
@@ -179,16 +199,17 @@ async function logout() {
         <a
           :href="brand?.returnUrl ?? '/'"
           class="group flex min-w-0 items-center gap-2.5"
-          :aria-label="`Return to ${brand?.name ?? 'application'}`"
+          :aria-label="`Return to ${brand?.presentation.productName ?? brand?.name ?? 'application'}`"
         >
           <IdentityAuthBrandMark
-            :logo-url="brand?.appearance.logoUrl"
+            :logo-url="brand?.presentation.logoUrl"
+            :accent-color="brand?.presentation.accentColor"
             size="compact"
           />
           <span
             class="truncate text-sm font-semibold tracking-tight text-highlighted transition-colors group-hover:text-primary"
           >
-            {{ brand?.name ?? 'Application' }}
+            {{ brand?.presentation.productName ?? brand?.name ?? 'Application' }}
           </span>
         </a>
       </template>

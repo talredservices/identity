@@ -1,0 +1,70 @@
+{
+  "cSpell.words": [
+    "awilix"
+  ],
+  "editor.detectIndentation": false,
+  "editor.insertSpaces": true,
+  "editor.tabSize": 2,
+  "editor.formatOnSave": false,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "always"
+  },
+  "eslint.format.enable": true,
+  "eslint.workingDirectories": [{ "mode": "auto" }],
+  "editor.defaultFormatter": "dbaeumer.vscode-eslint",
+  "[vue]": {
+    "editor.defaultFormatter": "dbaeumer.vscode-eslint"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "dbaeumer.vscode-eslint"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "dbaeumer.vscode-eslint"
+  },
+  "html.format.wrapAttributes": "preserve",
+  "[json]": {
+    "editor.defaultFormatter": "vscode.json-language-features"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "vscode.json-language-features"
+  },
+  "prettier.enable": false,
+  "intelephense.files.exclude": [
+    "**/packages/backup/**"
+  ],
+  "intelephense.files.maxSize": 5000000,
+  "workbench.editor.labelFormat": "medium",
+  "explorer.compactFolders": true,
+  "files.exclude": {
+    // "layers/*/index.ts": true,
+    // "layers/*/server/services/*/index.ts": true,
+    // "**/application/index.ts": true,
+    // "**/application/*/index.ts": true,
+    // "**/atoms/index.ts": true,
+    // "**/auth/index.ts": true,
+    // "**/bindings/index.ts": true,
+    // "**/commands/index.ts": true,
+    // "**/contracts/index.ts": true,
+    // "**/domain/index.ts": true,
+    // "**/dto/index.ts": true,
+    // "**/entities/index.ts": true,
+    // "**/errors/index.ts": true,
+    // "**/events/index.ts": true,
+    // "**/infrastructure/index.ts": true,
+    // "**/listeners/index.ts": true,
+    // "**/mappers/index.ts": true,
+    // "**/models/index.ts": true,
+    // "**/molecules/index.ts": true,
+    // "**/organisms/index.ts": true,
+    // "**/presentation/index.ts": true,
+    // "**/queries/index.ts": true,
+    // "**/repositories/index.ts": true,
+    // "**/requests/index.ts": true,
+    // "**/services/index.ts": true,
+    // "**/services/*/index.ts": true,
+    // "**/templates/index.ts": true,
+    // "**/types/index.ts": true,
+    // "**/users/index.ts": true,
+    // "**/value-objects/index.ts": true
+  }
+}

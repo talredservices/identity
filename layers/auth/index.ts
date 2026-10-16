@@ -26,12 +26,10 @@ export function createAuthRuntimeConfig(
       }
     },
     identityHostedApplicationsToken: env.IDENTITY_HOSTED_APPLICATIONS_TOKEN ?? '',
-    hostedAuth: {
-      pageSets: (env.IDENTITY_HOSTED_AUTH_PAGE_SETS ?? 'default')
-        .split(',')
-        .map(pageSet => pageSet.trim())
-        .filter(Boolean)
-    },
+    identityHostedAuthPageSets: (env.IDENTITY_HOSTED_AUTH_PAGE_SETS ?? 'default')
+      .split(',')
+      .map(pageSet => pageSet.trim())
+      .filter(Boolean),
     identityGoogle: {
       clientId: env.IDENTITY_GOOGLE_CLIENT_ID ?? env.GOOGLE_CLIENT_ID ?? '',
       clientSecret: env.IDENTITY_GOOGLE_CLIENT_SECRET ?? env.GOOGLE_CLIENT_SECRET ?? ''

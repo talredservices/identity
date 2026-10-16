@@ -17,7 +17,7 @@ use Zolta\Http\Service\Attributes\Service;
 #[Response(TemporaryAccountResource::class)]
 #[Doc(
     summary: 'Create a temporary demo account',
-    description: 'Creates short-lived credentials for the portfolio demonstrations.',
+    description: 'Creates short-lived credentials for an enabled demo account.',
     tags: ['Authentication']
 )]
 final class ProvisionTemporaryAccountController extends Controller {}

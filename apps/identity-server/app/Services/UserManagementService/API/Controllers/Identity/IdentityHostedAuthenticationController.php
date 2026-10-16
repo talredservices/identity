@@ -47,7 +47,7 @@ final class IdentityHostedAuthenticationController extends Controller
     #[Service(ExecuteIdentityAuthenticationService::class, 'Session refreshed.')]
     public function refresh(): void {}
 
-    #[Route('v1/identity/hosted-applications/{application}/auth/password/forgot', methods: ['POST'], middleware: [...self::MIDDLEWARE, 'throttle:5,1'], name: 'identity.hosted_applications.password.forgot')]
+    #[Route('v1/identity/hosted-applications/{application}/auth/password/forgot', methods: ['POST'], middleware: [...self::MIDDLEWARE, 'throttle:identity-hosted-password-recovery'], name: 'identity.hosted_applications.password.forgot')]
     #[Request(IdentityHostedAuthenticationOperationRequest::class, IdentityOperationDTO::class)]
     #[Service(ExecuteIdentityAuthenticationService::class, 'Password reset requested.')]
     public function forgotPassword(): void {}

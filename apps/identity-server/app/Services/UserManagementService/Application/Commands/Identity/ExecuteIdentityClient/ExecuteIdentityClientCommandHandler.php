@@ -28,6 +28,12 @@ final readonly class ExecuteIdentityClientCommandHandler
                 $command->projectId,
                 (string) $command->input['client'],
             ),
+            IdentityClientOperation::Rename => $this->clients->renameClient(
+                $command->actorUserId,
+                $command->projectId,
+                (string) $command->input['client'],
+                (string) $command->input['name'],
+            ),
             IdentityClientOperation::SetStatus => $this->setStatus($command),
             IdentityClientOperation::Delete => $this->delete($command),
             IdentityClientOperation::SyncPermissionManifest => $this->clients->syncPermissionManifest(

@@ -2,7 +2,7 @@
   "name": "@package/ui",
   "private": true,
   "type": "module",
-  "dependencies": {
+  "devDependencies": {
     "@nuxt/ui": "^4.11.0"
   },
   "packageManager": "pnpm@10.30.3"

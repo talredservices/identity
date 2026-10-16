@@ -34,8 +34,8 @@ final readonly class EloquentTemporaryAccountManager implements TemporaryAccount
 
             User::query()->create([
                 'id' => $id,
-                'username' => "Portfolio Guest {$suffix}",
-                'email' => "demo-{$id}@portfolio.invalid",
+                'username' => "Demo Guest {$suffix}",
+                'email' => "demo-{$id}@identity.invalid",
                 'password' => $password,
                 'terms' => 'accepted',
                 'email_verified_at' => now(),
@@ -45,7 +45,7 @@ final readonly class EloquentTemporaryAccountManager implements TemporaryAccount
             ]);
 
             return [
-                'email' => "demo-{$id}@portfolio.invalid",
+                'email' => "demo-{$id}@identity.invalid",
                 'password' => $password,
                 'expires_at' => $expiresAt->toAtomString(),
             ];

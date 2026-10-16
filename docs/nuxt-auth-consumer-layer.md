@@ -4,8 +4,8 @@ The identity repository owns a reusable Nuxt BFF authentication package. Consume
 
 ## Package entries
 
-- `@zoltasoft/identity-nuxt` provides the headless authentication layer: the encrypted session, CSRF protection, identity API client, local `/api/auth/*` routes, composables, middleware, and reusable form components.
-- `@zoltasoft/identity-nuxt/default-pages` extends the headless layer with ready-to-use login, registration, password recovery/reset, and email verification pages.
+- `@talred/identity-nuxt` provides the headless authentication layer: the encrypted session, CSRF protection, identity API client, local `/api/auth/*` routes, composables, middleware, and reusable form components.
+- `@talred/identity-nuxt/default-pages` extends the headless layer with ready-to-use login, registration, password recovery/reset, and email verification pages.
 
 An application with branded authentication pages extends the headless entry and builds its pages from `useIdentityAuth` or the supplied components. An application that wants the standard interface extends `default-pages`. A consumer may also override any default Nuxt page locally.
 

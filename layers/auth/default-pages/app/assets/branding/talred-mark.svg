@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 2.5 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Talred prism mark</title>
+  <desc id="desc">A dimensional T with a rounded lower-right crossbar corner, teal facets and a fading green ring.</desc>
+  <defs>
+    <linearGradient id="face" x1="12" y1="12" x2="51" y2="51" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#24b89f"/>
+      <stop offset="1" stop-color="#087568"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="32" cy="34.5" r="27" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#45ca79" stop-opacity=".18"/>
+      <stop offset=".58" stop-color="#28b974" stop-opacity=".12"/>
+      <stop offset="1" stop-color="#138b67" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="orbit" x1="60" y1="34.5" x2="4" y2="34.5" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#126b59" stop-opacity=".06"/>
+      <stop offset=".25" stop-color="#1aa978" stop-opacity=".25"/>
+      <stop offset=".5" stop-color="#32c879" stop-opacity=".52"/>
+      <stop offset=".75" stop-color="#47d275" stop-opacity=".82"/>
+      <stop offset="1" stop-color="#56d981" stop-opacity=".96"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="34.5" r="27" fill="url(#halo)"/>
+  <circle cx="32" cy="34.5" r="29" fill="none" stroke="url(#orbit)" stroke-width="3.2"/>
+  <g transform="translate(8.51 14.8713) scale(.68)">
+  <path fill="#07111f" fill-opacity=".94" d="M16 18h42v11a3 3 0 0 1-3 3H43v25H31V32H16z"/>
+  <path fill="#0d776a" d="m11 12 42 0 5 6-42 0z"/>
+  <path fill="#075d55" d="M53 12v11a3 3 0 0 1-3 3l5 6a3 3 0 0 0 3-3V18z"/>
+  <path fill="#0b665d" d="M53 23a3 3 0 0 1-3 3H38l5 6h12a3 3 0 0 0 3-3z"/>
+  <path fill="#07564f" d="m38 26 0 25 5 6V32z"/>
+  <path fill="#064a45" d="m38 51-12 0 5 6h12z"/>
+  <path fill="#0d7065" d="m26 51 0-25 5 6v25z"/>
+  <path fill="#0e756a" d="m26 26-15 0 5 6h15z"/>
+  <path fill="#138575" d="m11 26 0-14 5 6v14z"/>
+  <path fill="url(#face)" d="M11 12h42v11a3 3 0 0 1-3 3H38v25H26V26H11z"/>
+  <path fill="#fff" fill-opacity=".2" d="M12 13h40v2H12z"/>
+  <path fill="#fff" fill-opacity=".11" d="M27 27h3v23h-3z"/>
+  <g fill="#075d55" stroke="#d9fff7" stroke-opacity=".7" stroke-width=".65">
+    <circle cx="16" cy="19" r="1.8"/>
+    <circle cx="48" cy="19" r="1.8"/>
+    <circle cx="32" cy="45" r="1.8"/>
+  </g>
+  </g>
+</svg>

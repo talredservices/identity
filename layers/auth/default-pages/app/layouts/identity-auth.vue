@@ -11,8 +11,8 @@ type HostedBrand = {
   key: string
   name: string
   projectName?: string
-  authPageSet?: string
-  appearance: HostedAppearance
+  returnUrl: string
+  presentation: HostedAppearance & { pageSet: string, productName: string }
   authentication: {
     termsUrl: string | null
     privacyUrl: string | null
@@ -45,31 +45,29 @@ const { data: experience } = await useAsyncData<HostedBrand | null>(
 const brand = computed(() => experience.value)
 const config = useRuntimeConfig()
 const productName = computed(
-  () => brand.value?.name ?? brand.value?.projectName ?? config.public.identityAuth.productName
+  () => brand.value?.presentation.productName ?? brand.value?.name ?? brand.value?.projectName ?? config.public.identityAuth.productName
 )
-const pageSet = computed(() => identityAuthPageSet(
-  route.params.pageSet ?? brand.value?.authPageSet
-))
+const pageSet = computed(() => identityAuthPageSet(brand.value?.presentation.pageSet))
 const backgroundPreset = computed(
-  () => brand.value?.appearance.backgroundPreset ?? 'identity'
+  () => brand.value?.presentation.backgroundPreset ?? 'identity'
 )
 const brandStyle = computed(() => {
-  const tokens = brand.value?.appearance.designTokens ?? {}
+  const tokens = brand.value?.presentation.designTokens ?? {}
   const styles: Record<string, string> = {}
 
   for (const [key, value] of Object.entries(tokens)) {
     styles[`--identity-hosted-${key.replaceAll('_', '-')}`] = value
   }
 
-  if (brand.value?.appearance.accentColor && !tokens.accent) {
-    styles['--identity-hosted-accent'] = brand.value.appearance.accentColor
+  if (brand.value?.presentation.accentColor && !tokens.accent) {
+    styles['--identity-hosted-accent'] = brand.value.presentation.accentColor
   }
 
   for (const [key, value] of Object.entries(tokens)) {
     if (key.startsWith('primary_')) styles[`--ui-color-primary-${key.slice(8)}`] = value
   }
 
-  const accent = tokens.accent ?? brand.value?.appearance.accentColor ?? '#3157d5'
+  const accent = tokens.accent ?? brand.value?.presentation.accentColor ?? '#3157d5'
   styles['--ui-primary'] = tokens.primary_600 ?? accent
 
   // The auth logo uses the explicit Nuxt UI primary shade variables rather
@@ -102,12 +100,17 @@ provide('identity-auth-page-set', pageSet)
     ]"
     :style="brandStyle"
   >
-    <header class="identity-auth-header">
+    <header
+      class="identity-auth-header"
+    >
       <div class="identity-auth-header-inner">
-        <div class="identity-auth-header-brand">
+        <div
+          class="identity-auth-header-brand"
+        >
           <IdentityAuthBrandMark
-            :logo-url="brand?.appearance.logoUrl"
-            size="compact"
+            :logo-url="brand?.presentation.logoUrl"
+            :accent-color="brand?.presentation.accentColor"
+            size="header"
           />
           <span class="identity-auth-header-name">{{ productName }}</span>
         </div>
@@ -443,7 +446,14 @@ body {
 
 .identity-auth-success {
   background: #edf9f1;
-  color: #22643a;
+  color: #14532d;
+  border: 1px solid #86b89a;
+}
+
+.dark .identity-auth-success {
+  background: #123524;
+  color: #dcfce7;
+  border-color: #40825b;
 }
 
 .identity-auth-status {
@@ -523,6 +533,20 @@ body {
 
 .identity-auth-links a:hover {
   text-decoration: underline;
+}
+
+.identity-auth-return-link {
+  color: var(--identity-auth-accent);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: currentColor;
+  text-underline-offset: 0.2em;
+}
+
+.identity-auth-return-link:focus-visible {
+  border-radius: 0.2rem;
+  outline: 2px solid var(--identity-auth-accent);
+  outline-offset: 3px;
 }
 
 .identity-auth-background--slate .identity-auth-header {

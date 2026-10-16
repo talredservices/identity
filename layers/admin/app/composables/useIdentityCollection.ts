@@ -1,9 +1,10 @@
 export function useIdentityCollection<T>(
   source: MaybeRefOrGetter<T[] | null | undefined>,
   searchableText: (item: T) => string,
-  pageSize = 10
+  pageSize = 10,
+  initialSearch = ''
 ) {
-  const search = ref('')
+  const search = ref(initialSearch)
   const debouncedSearch = refDebounced(search, 250)
   const page = ref(1)
 

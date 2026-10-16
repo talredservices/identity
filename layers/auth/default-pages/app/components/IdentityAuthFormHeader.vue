@@ -7,15 +7,18 @@ defineProps<{
 }>()
 
 const brand = inject<ComputedRef<{
-  appearance: { logoUrl?: string | null, welcomeText?: string | null }
+  presentation: { logoUrl?: string | null, accentColor?: string | null, welcomeText?: string | null }
 } | null>>('identity-auth-brand', computed(() => null))
 
-const welcomeText = computed(() => brand.value?.appearance.welcomeText)
+const welcomeText = computed(() => brand.value?.presentation.welcomeText)
 </script>
 
 <template>
   <div class="identity-auth-form-header">
-    <IdentityAuthBrandMark :logo-url="brand?.appearance.logoUrl" />
+    <IdentityAuthBrandMark
+      :logo-url="brand?.presentation.logoUrl"
+      :accent-color="brand?.presentation.accentColor"
+    />
     <h1>
       {{ title }}
     </h1>

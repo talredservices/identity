@@ -139,7 +139,7 @@ final class IdentityPayloadFactory
                 'email' => $user->email,
                 'username' => $account?->username ?? $user->username,
                 'avatar_url' => $account?->profile_picture ?? $user->avatar_url,
-                'email_verified' => ($account?->email_verified_at ?? $user->email_verified_at) !== null,
+                'email_verified' => $account !== null ? $account->email_verified_at !== null : $user->email_verified_at !== null,
                 'is_system_admin' => $user->is_system_admin,
                 'is_temporary' => $user->is_temporary,
                 'temporary_expires_at' => $user->demo_expires_at?->toIso8601String(),
@@ -194,10 +194,45 @@ final class IdentityPayloadFactory
             'name' => $application->name,
             'application_url' => $application->application_url,
             'callback_url' => $application->callback_url,
+            'authentication_mode' => $application->authentication_mode ?: 'hosted',
+            'password_reset_url' => $application->password_reset_url,
+            'policy_revision' => $application->policy_revision,
             'auth_page_set' => $application->auth_page_set ?: 'default',
             'appearance' => $this->hostedApplicationAppearance($application),
             'authentication' => $this->hostedApplicationAuthentication($application),
             'status' => $application->status,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function hostedApplicationDirectoryItem(IdentityHostedApplication $application): array
+    {
+        $project = $application->project;
+        $applicationUrl = $application->application_url;
+        $urlParts = $applicationUrl === null ? false : parse_url($applicationUrl);
+        $safeApplicationUrl = is_array($urlParts)
+            && in_array(strtolower((string) ($urlParts['scheme'] ?? '')), ['http', 'https'], true)
+            && ! empty($urlParts['host'])
+            && ! isset($urlParts['user'])
+            && ! isset($urlParts['pass'])
+            && ! isset($urlParts['query'])
+            && ! isset($urlParts['fragment'])
+            ? $applicationUrl
+            : null;
+
+        return [
+            'id' => $application->id,
+            'name' => $application->name,
+            'key' => $application->key,
+            'status' => $application->status,
+            'application_url' => $safeApplicationUrl,
+            'project' => [
+                'id' => $project->id,
+                'name' => $project->name,
+                'slug' => $project->slug,
+                'status' => $project->status,
+                'mode' => $project->mode,
+            ],
         ];
     }
 

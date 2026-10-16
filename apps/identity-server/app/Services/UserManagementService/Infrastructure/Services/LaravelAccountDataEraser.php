@@ -30,7 +30,6 @@ final class LaravelAccountDataEraser implements AccountDataEraserInterface
             $this->deleteByUserId('credit_wallets', $id);
             $this->deleteByUserId('permission_user', $id);
             $this->deleteByUserId('social_accounts', $id);
-            $this->deleteByUserId('sessions', $id);
 
             if (Schema::hasTable('personal_access_tokens')) {
                 DB::table('personal_access_tokens')

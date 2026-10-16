@@ -4,10 +4,10 @@ export function useAuthenticatedFetch() {
 
   return async function authenticatedFetch<T>(
     request: string,
-    options?: Parameters<typeof $fetch>[1]
+    options?: Omit<NonNullable<Parameters<ReturnType<typeof useRequestFetch>>[1]>, 'baseURL'> & { baseURL?: '' }
   ): Promise<T> {
     try {
-      return await requestFetch<T>(request, options) as T
+      return await requestFetch(request, options) as T
     } catch (error) {
       if (isUnauthorizedError(error)) {
         await clearSessionAndRedirect()

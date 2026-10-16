@@ -38,6 +38,11 @@ final class IdentityProjectController extends Controller
     #[Service(ReadIdentityProjectService::class, 'Projects retrieved.')]
     public function index(): void {}
 
+    #[Route('v1/identity/applications', methods: ['GET'], middleware: self::MIDDLEWARE, name: 'identity.applications.index')]
+    #[Request(IdentityProjectOperationRequest::class, IdentityOperationDTO::class)]
+    #[Service(ReadIdentityProjectService::class, 'Applications retrieved.')]
+    public function applicationDirectory(): void {}
+
     #[Route('v1/identity/projects', methods: ['POST'], middleware: self::MIDDLEWARE, name: 'identity.projects.store')]
     #[Request(IdentityProjectOperationRequest::class, IdentityOperationDTO::class)]
     #[Service(ExecuteIdentityProjectService::class, 'Project created.', 201)]
@@ -123,6 +128,11 @@ final class IdentityProjectController extends Controller
     #[Service(ExecuteIdentityProjectService::class, 'Client secret rotated.')]
     public function rotateClient(): void {}
 
+    #[Route('v1/identity/projects/{project}/clients/{client}/name', methods: ['PATCH'], middleware: self::MIDDLEWARE, name: 'identity.projects.clients.name')]
+    #[Request(IdentityProjectOperationRequest::class, IdentityOperationDTO::class)]
+    #[Service(ExecuteIdentityProjectService::class, 'Client name updated.')]
+    public function renameClient(): void {}
+
     #[Route('v1/identity/projects/{project}/clients/{client}', methods: ['PATCH'], middleware: self::MIDDLEWARE, name: 'identity.projects.clients.status')]
     #[Request(IdentityProjectOperationRequest::class, IdentityOperationDTO::class)]
     #[Service(ExecuteIdentityProjectService::class, 'Client status updated.')]
@@ -152,6 +162,26 @@ final class IdentityProjectController extends Controller
     #[Request(IdentityProjectOperationRequest::class, IdentityOperationDTO::class)]
     #[Service(ExecuteIdentityProjectService::class, 'Hosted application removed.')]
     public function destroyHostedApplication(): void {}
+
+    #[Route('v1/identity/projects/{project}/applications', methods: ['GET'], middleware: self::MIDDLEWARE, name: 'identity.projects.applications.index')]
+    #[Request(IdentityProjectOperationRequest::class, IdentityOperationDTO::class)]
+    #[Service(ReadIdentityProjectService::class, 'Applications retrieved.')]
+    public function applications(): void {}
+
+    #[Route('v1/identity/projects/{project}/applications', methods: ['POST'], middleware: self::MIDDLEWARE, name: 'identity.projects.applications.store')]
+    #[Request(IdentityProjectOperationRequest::class, IdentityOperationDTO::class)]
+    #[Service(ExecuteIdentityProjectService::class, 'Application created.', 201)]
+    public function storeApplication(): void {}
+
+    #[Route('v1/identity/projects/{project}/applications/{hosted_application}', methods: ['PATCH'], middleware: self::MIDDLEWARE, name: 'identity.projects.applications.update')]
+    #[Request(IdentityProjectOperationRequest::class, IdentityOperationDTO::class)]
+    #[Service(ExecuteIdentityProjectService::class, 'Application updated.')]
+    public function updateApplication(): void {}
+
+    #[Route('v1/identity/projects/{project}/applications/{hosted_application}', methods: ['DELETE'], middleware: self::MIDDLEWARE, name: 'identity.projects.applications.destroy')]
+    #[Request(IdentityProjectOperationRequest::class, IdentityOperationDTO::class)]
+    #[Service(ExecuteIdentityProjectService::class, 'Application removed.')]
+    public function destroyApplication(): void {}
 
     #[Route('v1/identity/projects/{project}/roles', methods: ['POST'], middleware: self::MIDDLEWARE, name: 'identity.projects.roles.store')]
     #[Request(IdentityProjectOperationRequest::class, IdentityOperationDTO::class)]

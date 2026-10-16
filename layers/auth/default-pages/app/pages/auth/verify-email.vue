@@ -33,7 +33,7 @@ if (hosted.value) {
   const session = useUserSession()
   if (!session.loggedIn.value) await session.fetch()
   if (!session.loggedIn.value) {
-    await navigateTo(identityAuthPagePath('login', route.params.pageSet, { redirect: route.fullPath }))
+    await navigateTo({ path: '/auth/login', query: { redirect: route.fullPath } })
   }
 }
 const schema = z.object({ code: z.string().regex(/^\d{6}$/, 'Enter the six-digit verification code.') })
@@ -115,14 +115,12 @@ async function resend() {
     <UAlert
       color="neutral"
       variant="subtle"
-      icon="i-lucide-clock-3"
       title="Start again to receive a new verification code."
     />
     <UButton
       :to="hostedLoginLocation"
       block
       label="Start again"
-      icon="i-lucide-arrow-left"
     />
   </section>
 
@@ -134,7 +132,6 @@ async function resend() {
     :validate-on="['input']"
     title="Verify your email"
     description="Enter the six-digit code sent to your email address."
-    icon="i-lucide-mail-check"
     :submit="{ label: 'Verify email', loading: pending }"
     @submit="submit"
   >

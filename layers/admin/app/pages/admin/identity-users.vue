@@ -96,7 +96,7 @@ async function update(user: IdentityInstallationUser, changes: Partial<Pick<Iden
           :data="collection.paginatedItems.value"
           :columns="columns"
           empty="No identities match the current filters."
-          class="min-w-5xl"
+          class="hidden min-w-5xl md:block"
           :ui="{
             thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
             tbody: '[&>tr]:last:[&>td]:border-b-0',
@@ -183,6 +183,89 @@ async function update(user: IdentityInstallationUser, changes: Partial<Pick<Iden
             </div>
           </template>
         </UTable>
+
+        <div class="divide-y divide-default md:hidden">
+          <article
+            v-for="user in collection.paginatedItems.value"
+            :key="user.id"
+            class="space-y-3 p-4"
+          >
+            <div class="flex min-w-0 items-start gap-3">
+              <UAvatar
+                :alt="user.username"
+                size="sm"
+                class="shrink-0"
+              />
+              <div class="min-w-0 flex-1">
+                <p class="break-words font-medium text-highlighted">
+                  {{ user.username }}
+                </p>
+                <p class="break-all text-xs text-muted">
+                  {{ user.email }}
+                </p>
+              </div>
+              <UBadge
+                :color="user.email_verified_at ? 'success' : 'warning'"
+                variant="soft"
+                class="shrink-0"
+              >
+                {{ user.email_verified_at ? 'Verified' : 'Pending' }}
+              </UBadge>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 text-sm">
+              <UBadge
+                v-if="user.is_system_admin"
+                color="primary"
+                variant="soft"
+              >
+                System admin
+              </UBadge>
+              <UBadge
+                v-if="user.locked"
+                color="error"
+                variant="soft"
+              >
+                Locked
+              </UBadge>
+              <span
+                v-if="!user.is_system_admin && !user.locked"
+                class="text-muted"
+              >Member</span>
+              <span class="ms-auto text-muted">{{ user.project_count }} projects</span>
+            </div>
+            <p class="text-xs text-muted">
+              Created {{ formatIdentityDate(user.created_at) }}
+            </p>
+            <div class="flex flex-wrap justify-end gap-1 border-t border-default pt-2">
+              <UTooltip :text="user.is_system_admin ? 'Remove system admin' : 'Make system admin'">
+                <UButton
+                  :icon="user.is_system_admin ? 'i-lucide-shield-off' : 'i-lucide-shield-plus'"
+                  color="neutral"
+                  variant="ghost"
+                  :loading="updatingId === user.id"
+                  :aria-label="user.is_system_admin ? 'Remove system admin' : 'Make system admin'"
+                  @click="update(user, { is_system_admin: !user.is_system_admin })"
+                />
+              </UTooltip>
+              <UTooltip :text="user.locked ? 'Unlock account' : 'Lock account'">
+                <UButton
+                  :icon="user.locked ? 'i-lucide-lock-open' : 'i-lucide-lock'"
+                  :color="user.locked ? 'success' : 'error'"
+                  variant="ghost"
+                  :loading="updatingId === user.id"
+                  :aria-label="user.locked ? 'Unlock account' : 'Lock account'"
+                  @click="update(user, { locked: !user.locked })"
+                />
+              </UTooltip>
+            </div>
+          </article>
+          <p
+            v-if="!collection.paginatedItems.value.length"
+            class="p-4 text-sm text-muted"
+          >
+            No identities match the current filters.
+          </p>
+        </div>
 
         <template
           v-if="collection.total.value > collection.pageSize"

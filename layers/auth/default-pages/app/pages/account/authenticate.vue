@@ -7,7 +7,7 @@ import { useIdentityMutation } from '../../../../app/composables/useIdentityMuta
 definePageMeta({ layout: 'identity-auth' })
 
 const brand = inject<ComputedRef<{
-  appearance: { logoUrl?: string | null }
+  presentation: { logoUrl?: string | null, accentColor?: string | null }
 } | null>>('identity-auth-brand', computed(() => null))
 
 type AccountContext = {
@@ -239,7 +239,8 @@ async function continueWithGoogle() {
       aria-label="Returning to the application"
     >
       <IdentityAuthBrandMark
-        :logo-url="brand?.appearance.logoUrl"
+        :logo-url="brand?.presentation.logoUrl"
+        :accent-color="brand?.presentation.accentColor"
         size="form"
         class="animate-pulse"
       />

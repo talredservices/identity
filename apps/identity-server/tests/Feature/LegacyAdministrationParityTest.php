@@ -15,6 +15,11 @@ final class LegacyAdministrationParityTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_guests_receive_unauthorized_for_installation_user_administration(): void
+    {
+        $this->get('/api/users')->assertUnauthorized();
+    }
+
     public function test_system_administrator_can_manage_installation_users(): void
     {
         $administrator = $this->user('administrator', true);
@@ -93,6 +98,7 @@ final class LegacyAdministrationParityTest extends TestCase
             'two_factor_enabled' => true,
             'backup_email' => 'backup@example.com',
         ]);
+        $this->assertDatabaseCount('identity_project_accounts', 2);
         $this->assertDatabaseHas('identity_project_accounts', [
             'project_id' => $firstProject->id,
             'user_id' => $user->id,

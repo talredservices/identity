@@ -98,6 +98,10 @@ return [
         'hosted_applications' => [
             'internal_token' => env('IDENTITY_HOSTED_APPLICATIONS_TOKEN'),
             'branding_disk' => env('IDENTITY_BRANDING_DISK', 'public'),
+            'page_sets' => array_values(array_unique(array_filter(array_map(
+                'trim',
+                explode(',', (string) env('IDENTITY_HOSTED_AUTH_PAGE_SETS', 'default')),
+            )))),
         ],
     ],
 

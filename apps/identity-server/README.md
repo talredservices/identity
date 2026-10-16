@@ -1,6 +1,6 @@
 # Identity API
 
-This Laravel 13 application is the independently deployable API for [ZoltaSoft's Laravel Zolta Identity](https://github.com/zoltasoft/zolta-identity). Its `UserManagementService` slice provides authentication and account lifecycle, installation-user administration, social accounts, project access management, a reusable access catalog, confidential clients, rotating sessions, audit, and consumer introspection.
+This Laravel 13 application is the independently deployable API for [Talred's Laravel Talred Identity](https://github.com/talredservices/identity). Its `UserManagementService` slice provides authentication and account lifecycle, installation-user administration, social accounts, project access management, a reusable access catalog, confidential clients, rotating sessions, audit, and consumer introspection.
 
 ## Local setup
 
@@ -50,3 +50,8 @@ php artisan route:list --path=api/v1/identity
 Give the identity server its own database and deployment lifecycle. Consumer applications should store only their domain data and the global identity IDs needed to associate it with users.
 
 Production webhook delivery requires an asynchronous queue worker. Webhook requests include `X-Identity-Event-Id`, `X-Identity-Event`, `X-Identity-Timestamp`, and `X-Identity-Signature`; the signature is `v1=` followed by HMAC-SHA256 of `<timestamp>.<raw-body>`. HTTPS is required in production and private destinations are rejected.
+
+
+## Installation owner recovery
+
+When the installation owner forgets the password, use `php artisan identity:recover-owner` from a trusted server operator session. The command requires `IDENTITY_RECOVERY_KEY` from the server environment and accepts the recovery key and replacement password only through hidden prompts. It rotates the global owner and project account credentials in one transaction, revokes tokens, clears lock state, and writes `auth.identity_owner_recovered` to the audit log. It never drops or recreates tables.

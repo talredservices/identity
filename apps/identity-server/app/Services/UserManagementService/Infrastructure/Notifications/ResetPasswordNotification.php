@@ -28,11 +28,16 @@ final class ResetPasswordNotification extends Notification
         ]);
 
         return (new MailMessage)
-            ->subject('Reset your InterviewLike password')
-            ->greeting('Reset your password')
-            ->line('We received a password reset request for your InterviewLike account.')
-            ->action('Choose a new password', "{$baseUrl}/auth/reset-password?{$query}")
-            ->line('This link expires in '.config('auth.passwords.users.expire').' minutes.')
-            ->line('If you did not request this change, you can ignore this email.');
+            ->from((string) config('mail.from.address'), 'Identity')
+            ->subject('Reset your password')
+            ->view('emails.identity-password-reset', [
+                'applicationName' => 'Identity',
+                'resetUrl' => "{$baseUrl}/auth/reset-password?{$query}",
+            ])
+            ->text('emails.identity-password-reset-text', [
+                'applicationName' => 'Identity',
+                'resetUrl' => "{$baseUrl}/auth/reset-password?{$query}",
+                'token' => $this->token,
+            ]);
     }
 }

@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'InterviewLike Server'),
+    'name' => env('APP_NAME', 'Talred Identity'),
 
     /*
     |--------------------------------------------------------------------------

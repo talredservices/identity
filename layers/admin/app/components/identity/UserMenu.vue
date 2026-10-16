@@ -30,14 +30,21 @@ const user = computed(() => {
 
   const name = sessionUser?.name || sessionUser?.username || t('identityConsole.administrator')
   const email = sessionUser?.email || ''
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0])
+    .join('')
+    .toUpperCase()
 
   return {
     name,
     email,
     avatar: {
-      src:
-        sessionUser?.avatar_url
-        || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=0D8ABC&color=fff`,
+      ...(sessionUser?.avatar_url
+        ? { src: sessionUser.avatar_url }
+        : { text: initials, color: 'primary' as const }),
       alt: name
     }
   }
@@ -157,7 +164,7 @@ onMounted(async () => {
     <UButton
       v-bind="{
         ...user,
-        label: collapsed ? undefined : user?.name,
+        label: collapsed ? undefined : t('userMenu.settings'),
         trailingIcon: collapsed ? undefined : 'i-lucide-chevrons-up-down'
       }"
       color="neutral"

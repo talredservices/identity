@@ -1,14 +1,17 @@
 import type { H3Event } from 'h3'
-import { createError, getRequestURL, useSession } from 'h3'
-import { $fetch, type FetchOptions } from 'ofetch'
+import { createError, getRequestURL, setResponseHeader, useSession } from 'h3'
+import { $fetch, FetchError, type FetchOptions } from 'ofetch'
 import type {
   IdentityAuthenticationContext,
   IdentityAuthenticationExperience,
+  IdentityHostedApplicationMetadata,
   IdentityLoginData,
   IdentityLoginInput,
   IdentityRegisterInput,
   IdentityResetPasswordInput
 } from '../../shared/types/identity-auth'
+import { identityHostedPageSet } from '../../shared/hosted-auth-page-sets'
+import { identityConfiguration, identityResetPassword } from './identity-api'
 
 type HostedConnection = {
   apiUrl: string
@@ -19,23 +22,16 @@ type HostedConnection = {
 type HostedApplication = {
   key: string
   name: string
+  projectName: string
   callbackUrl: string
-  authPageSet: string
+  presentation: IdentityHostedApplicationPublicPresentation
   applicationUrl?: string
-  appearance: HostedApplicationAppearance
   authentication: HostedApplicationAuthentication
   primary: HostedConnection
   sandbox?: HostedConnection
 }
 
-export type HostedApplicationPublicMetadata = {
-  key: string
-  name: string
-  returnUrl: string
-  authPageSet: string
-  appearance: HostedApplicationAppearance
-  authentication: HostedApplicationAuthentication
-}
+export type HostedApplicationPublicMetadata = IdentityHostedApplicationMetadata
 
 type HostedApplicationAuthentication = {
   googleEnabled: boolean
@@ -44,13 +40,7 @@ type HostedApplicationAuthentication = {
   privacyUrl: string | null
 }
 
-type HostedApplicationAppearance = {
-  welcomeText: string | null
-  accentColor: string | null
-  backgroundPreset: 'identity' | 'slate' | 'indigo' | 'emerald' | 'sunset'
-  logoUrl: string | null
-  designTokens: Record<string, string>
-}
+type IdentityHostedApplicationPublicPresentation = IdentityHostedApplicationMetadata['presentation']
 
 type HostedFlow = {
   application: string
@@ -114,13 +104,14 @@ function identityErrorStatus(error: unknown): number | undefined {
 type HostedApplicationConfiguration = {
   key: string
   name: string
+  project?: { name?: string, slug?: string }
   application_url: string
   callback_url: string
-  auth_page_set?: string
+  auth_page_set?: string | null
   appearance?: {
     welcome_text?: string | null
     accent_color?: string | null
-    background_preset?: HostedApplicationAppearance['backgroundPreset']
+    background_preset?: IdentityHostedApplicationMetadata['presentation']['backgroundPreset']
     logo_url?: string | null
     design_tokens?: Record<string, string>
   }
@@ -169,18 +160,22 @@ async function resolveHostedApplication(
     throw createError({ statusCode: 502, statusMessage: 'Identity returned an invalid hosted application configuration.' })
   }
 
+  const appearance = application.appearance
+
   return {
     key: application.key,
     name: application.name,
+    projectName: application.project?.name ?? application.name,
     applicationUrl: application.application_url,
     callbackUrl: application.callback_url,
-    authPageSet: application.auth_page_set ?? 'default',
-    appearance: {
-      welcomeText: application.appearance?.welcome_text ?? null,
-      accentColor: application.appearance?.accent_color ?? null,
-      backgroundPreset: application.appearance?.background_preset ?? 'identity',
-      logoUrl: application.appearance?.logo_url ?? null,
-      designTokens: application.appearance?.design_tokens ?? {}
+    presentation: {
+      pageSet: identityHostedPageSet(application.auth_page_set, config.identityHostedAuthPageSets),
+      productName: application.name,
+      welcomeText: appearance?.welcome_text ?? null,
+      accentColor: appearance?.accent_color ?? null,
+      backgroundPreset: appearance?.background_preset ?? 'identity',
+      logoUrl: appearance?.logo_url ?? null,
+      designTokens: appearance?.design_tokens ?? {}
     },
     authentication: {
       googleEnabled: application.authentication?.google_enabled ?? false,
@@ -213,28 +208,50 @@ export async function identityHostedApplicationByClient(
   return await resolveHostedApplication(event, `/hosted-clients/${encodeURIComponent(clientId)}/configuration`)
 }
 
+function hostedApplicationReturnUrl(event: H3Event, application: HostedApplication): string {
+  const identityOrigin = getRequestURL(event).origin
+  const callbackOrigin = new URL(application.callbackUrl).origin
+  const configuredUrl = application.applicationUrl?.trim()
+
+  if (configuredUrl) {
+    try {
+      const target = new URL(configuredUrl)
+      // A hosted application must not return users to the Identity host. This
+      // protects reset/login flows from stale bootstrap data such as the
+      // Identity root URL, which is not an application entry point.
+      if (target.origin !== identityOrigin || target.pathname !== '/') {
+        return target.toString()
+      }
+    } catch {
+      // Fall through to the validated callback origin.
+    }
+  }
+
+  return callbackOrigin !== identityOrigin
+    ? callbackOrigin
+    : `${identityOrigin}/auth/login`
+}
+
+function publicApplicationMetadata(event: H3Event, application: HostedApplication): HostedApplicationPublicMetadata {
+  return {
+    key: application.key,
+    name: application.name,
+    projectName: application.projectName,
+    returnUrl: hostedApplicationReturnUrl(event, application),
+    presentation: application.presentation,
+    authentication: application.authentication
+  }
+}
+
 export async function identityHostedAuthPageRoute(
   event: H3Event,
   applicationKey: string,
   screen: 'login' | 'register' | 'forgot-password' | 'reset-password' | 'verify-email'
 ): Promise<string> {
   const application = await identityHostedApplication(event, applicationKey)
-  const configuredPageSets = useRuntimeConfig(event).hostedAuth?.pageSets
-  const pageSet = application.authPageSet
-  const enabled = Array.isArray(configuredPageSets) && configuredPageSets.includes(pageSet)
-  const prefix = enabled && pageSet !== 'default' ? `/auth/${encodeURIComponent(pageSet)}` : '/auth'
+  const pageSet = application.presentation.pageSet
+  const prefix = pageSet !== 'default' ? `/auth/${encodeURIComponent(pageSet)}` : '/auth'
   return `${prefix}/${screen}`
-}
-
-function publicApplicationMetadata(application: HostedApplication): HostedApplicationPublicMetadata {
-  return {
-    key: application.key,
-    name: application.name,
-    returnUrl: application.applicationUrl ?? new URL(application.callbackUrl).origin,
-    authPageSet: application.authPageSet,
-    appearance: application.appearance,
-    authentication: application.authentication
-  }
 }
 
 export async function identityHostedApplicationMetadata(
@@ -246,7 +263,7 @@ export async function identityHostedApplicationMetadata(
     ? await identityHostedApplication(event, applicationKey)
     : await identityHostedApplicationByClient(event, clientId ?? '')
 
-  return publicApplicationMetadata(application)
+  return publicApplicationMetadata(event, application)
 }
 
 function requestTarget(connection: HostedConnection, path: string) {
@@ -527,7 +544,7 @@ async function context(event: H3Event, application: HostedApplication, name: 'pr
 export async function identityHostedExperience(
   event: H3Event,
   applicationKey: string
-): Promise<IdentityAuthenticationExperience & { application: { key: string, name: string, returnUrl: string, authPageSet: string, appearance: HostedApplicationAppearance, authentication: HostedApplicationAuthentication } }> {
+): Promise<IdentityAuthenticationExperience & { application: HostedApplicationPublicMetadata }> {
   const application = await identityHostedApplication(event, applicationKey)
   const authorization = await hostedAuthorization(event, application)
   return await hostedExperience(event, application, authorization.features.demoAccount)
@@ -536,7 +553,7 @@ export async function identityHostedExperience(
 export async function identityHostedExperienceByClient(
   event: H3Event,
   clientId: string
-): Promise<IdentityAuthenticationExperience & { application: { key: string, name: string, returnUrl: string, authPageSet: string, appearance: HostedApplicationAppearance, authentication: HostedApplicationAuthentication } }> {
+): Promise<IdentityAuthenticationExperience & { application: HostedApplicationPublicMetadata }> {
   const application = await identityHostedApplicationByClient(event, clientId)
   return await hostedExperience(event, application, false)
 }
@@ -544,7 +561,7 @@ export async function identityHostedExperienceByClient(
 async function hostedExperience(event: H3Event, application: HostedApplication, demoAccountEnabled: boolean) {
   const sandboxEnabled = demoAccountEnabled && Boolean(application.sandbox)
   return {
-    application: publicApplicationMetadata(application),
+    application: publicApplicationMetadata(event, application),
     primary: await context(event, application, 'primary'),
     sandbox: sandboxEnabled ? await context(event, application, 'sandbox') : null
   }
@@ -597,7 +614,7 @@ export async function identityHostedAccountContext(
     application: {
       key: applicationKey,
       name: application.name,
-      returnUrl: application.applicationUrl ?? new URL(application.callbackUrl).origin,
+      returnUrl: hostedApplicationReturnUrl(event, application),
       authentication: application.authentication,
       sandboxEnabled: account.connection === 'sandbox'
     },
@@ -801,11 +818,7 @@ export async function identityHostedLogin(
   if (requiresEmailVerification(identity)) {
     const session = await flowSession(event)
     await session.update({ application: applicationKey, state: assertState(state), identity })
-    const verificationRoute = await identityHostedAuthPageRoute(
-      event,
-      applicationKey,
-      'verify-email'
-    )
+    const verificationRoute = await identityHostedAuthPageRoute(event, applicationKey, 'verify-email')
     const verificationUrl = new URL(verificationRoute, getRequestURL(event).origin)
     verificationUrl.searchParams.set('application', applicationKey)
     verificationUrl.searchParams.set('state', state)
@@ -1022,7 +1035,21 @@ export async function identityHostedForgotPassword(
   email: string
 ) {
   const application = await identityHostedApplication(event, applicationKey)
-  return await hostedRequest<Record<string, unknown>>(event, application, '/password/forgot', { email })
+  try {
+    return await hostedRequest<Record<string, unknown>>(event, application, '/password/forgot', { email })
+  } catch (error) {
+    if (error instanceof FetchError && error.response?.status === 429) {
+      const rawRetryAfter = Number(error.response.headers.get('Retry-After'))
+      const retryAfter = Number.isInteger(rawRetryAfter) && rawRetryAfter > 0 && rawRetryAfter <= 3600 ? rawRetryAfter : 60
+      setResponseHeader(event, 'Retry-After', retryAfter)
+      throw createError({
+        statusCode: 429,
+        statusMessage: 'Too many password reset requests. Please wait before trying again.',
+        data: { retryAfter }
+      })
+    }
+    throw error
+  }
 }
 
 export async function identityHostedResetPassword(
@@ -1030,6 +1057,14 @@ export async function identityHostedResetPassword(
   clientId: string,
   input: IdentityResetPasswordInput
 ) {
+  // The Identity Console uses the shared auth layer without being a hosted
+  // application. Its reset links still carry the configured client id, so
+  // route those links through the first-party client contract instead of
+  // attempting a hosted-application lookup.
+  if (clientId === identityConfiguration(event).clientId) {
+    return await identityResetPassword(event, input)
+  }
+
   const application = await identityHostedApplicationByClient(event, clientId)
   const result = await hostedRequest<Record<string, unknown>>(event, application, '/password/reset', {
     email: input.email,
@@ -1040,6 +1075,6 @@ export async function identityHostedResetPassword(
 
   return {
     ...result,
-    applicationUrl: application.applicationUrl ?? new URL(application.callbackUrl).origin
+    applicationUrl: hostedApplicationReturnUrl(event, application)
   }
 }

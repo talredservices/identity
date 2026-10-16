@@ -7,7 +7,7 @@ definePageMeta({
   layout: 'identity-account'
 })
 
-const brand = inject<ComputedRef<{ appearance: { logoUrl?: string | null } } | null>>(
+const brand = inject<ComputedRef<{ presentation: { logoUrl?: string | null, accentColor?: string | null } } | null>>(
   'identity-account-brand',
   computed(() => null)
 )
@@ -34,6 +34,14 @@ const mutate = useIdentityMutation()
 const application = computed(() =>
   typeof route.query.application === 'string' ? route.query.application : ''
 )
+
+// The account portal is entered from a hosted application. Without that
+// application key it has no client context with which to read or change an
+// Identity account.
+if (!application.value) {
+  await navigateTo('/auth/complete', { replace: true })
+}
+
 const tab = computed<'profile' | 'security'>(() =>
   route.query.tab === 'security' ? 'security' : 'profile'
 )
@@ -280,7 +288,8 @@ async function deleteAccount() {
           aria-label="Loading account settings"
         >
           <IdentityAuthBrandMark
-            :logo-url="brand?.appearance.logoUrl"
+            :logo-url="brand?.presentation.logoUrl"
+            :accent-color="brand?.presentation.accentColor"
             size="form"
             class="animate-pulse"
           />
@@ -517,7 +526,8 @@ async function deleteAccount() {
           aria-label="Loading account settings"
         >
           <IdentityAuthBrandMark
-            :logo-url="brand?.appearance.logoUrl"
+            :logo-url="brand?.presentation.logoUrl"
+            :accent-color="brand?.presentation.accentColor"
             size="form"
             class="animate-pulse"
           />

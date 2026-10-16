@@ -1,7 +1,7 @@
 {
-	"name": "@zoltasoft/identity-nuxt",
+	"name": "@talred/identity-nuxt",
 	"version": "0.1.0",
-	"description": "Nuxt BFF authentication integration for Zolta Identity",
+	"description": "Nuxt BFF authentication integration for Talred Identity",
 	"type": "module",
 	"license": "Apache-2.0",
 	"exports": {

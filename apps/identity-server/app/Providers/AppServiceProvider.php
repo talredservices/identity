@@ -56,6 +56,10 @@ final class AppServiceProvider extends ServiceProvider
             ];
         });
 
+        RateLimiter::for('identity-hosted-password-recovery', static function (Request $request): Limit {
+            return Limit::perMinute(5)->by(self::hostedThrottleKey($request, 'password-recovery:application', $request->ip() ?? 'unknown'));
+        });
+
         RateLimiter::for('identity-authorization-intent', static function (Request $request): array {
             return self::identityIntentLimits($request, 'authorization');
         });

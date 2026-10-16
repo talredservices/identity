@@ -16,21 +16,21 @@ final class IdentityWebhookTest extends TestCase
     {
         $webhook = IdentityWebhook::create(
             new IdentityProjectId,
-            'https://job-tracker.example.com/identity',
+            'https://example-app.example.com/identity',
             ['identity.user.expired', 'identity.user.expired'],
             'initial-secret',
             'initial-',
         );
 
         $webhook->configure(
-            'https://job-tracker.example.com/webhooks/identity',
+            'https://example-app.example.com/webhooks/identity',
             ['identity.user.deletion_requested'],
             IdentityWebhookStatus::Disabled,
         );
         $webhook->rotateSecret('rotated-secret', 'rotated-');
 
         $this->assertSame(
-            'https://job-tracker.example.com/webhooks/identity',
+            'https://example-app.example.com/webhooks/identity',
             $webhook->url(),
         );
         $this->assertSame(['identity.user.deletion_requested'], $webhook->events());
@@ -45,7 +45,7 @@ final class IdentityWebhookTest extends TestCase
 
         IdentityWebhook::create(
             new IdentityProjectId,
-            'https://job-tracker.example.com/identity',
+            'https://example-app.example.com/identity',
             [],
             'secret',
             'prefix',

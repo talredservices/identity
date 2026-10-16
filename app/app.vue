@@ -16,10 +16,9 @@ useHead({
   }
 })
 
-const title
-  = 'Zolta Identity (Laravel + Nuxt 3) - Independent identity, project access, roles, permissions, and confidential client management.'
+const title = 'Talred Identity | Authentication and project access'
 const description
-  = 'Independent identity, project access, roles, permissions, and confidential client management.'
+  = 'Talred Identity provides secure authentication, account management, project access, roles, permissions, and confidential client management.'
 
 useSeoMeta({
   title,

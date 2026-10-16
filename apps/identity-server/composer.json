@@ -1,6 +1,6 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "zolta/identity",
+    "name": "talred/identity",
     "type": "project",
     "description": "Standalone Laravel identity API for multi-project accounts, RBAC, confidential clients, and token introspection.",
     "keywords": [
@@ -11,10 +11,10 @@
         "sanctum",
         "rbac",
         "cqrs",
-        "zolta"
+        "talred"
     ],
     "license": "Apache-2.0",
-    "homepage": "https://github.com/zoltasoft/zolta-identity",
+    "homepage": "https://github.com/talredservices/identity",
     "authors": [
         {
             "name": "Redouane Taleb",
@@ -23,8 +23,8 @@
         }
     ],
     "support": {
-        "issues": "https://github.com/zoltasoft/zolta-identity/issues",
-        "source": "https://github.com/zoltasoft/zolta-identity"
+        "issues": "https://github.com/talredservices/identity/issues",
+        "source": "https://github.com/talredservices/identity"
     },
     "require": {
         "php": "^8.3",
@@ -33,7 +33,7 @@
         "laravel/sanctum": "^4.0",
         "laravel/socialite": "^5.21",
         "laravel/tinker": "^3.0",
-        "zolta/framework": "^1.1"
+        "talred/php": "^1.0"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

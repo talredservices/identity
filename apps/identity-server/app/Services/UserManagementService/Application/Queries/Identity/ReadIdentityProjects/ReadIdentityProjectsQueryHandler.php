@@ -18,6 +18,8 @@ final readonly class ReadIdentityProjectsQueryHandler
     public function __invoke(ReadIdentityProjectsQuery $query): Option
     {
         $result = match ($query->operation) {
+            IdentityProjectReadOperation::ApplicationDirectory => $this->projects->listApplications($query->actorUserId),
+            IdentityProjectReadOperation::Applications => $this->projects->projectDetails($query->actorUserId, (string) $query->input['project'])['hosted_applications'],
             IdentityProjectReadOperation::Index => $this->projects->listProjects($query->actorUserId),
             IdentityProjectReadOperation::Show => $this->projects->projectDetails(
                 $query->actorUserId,

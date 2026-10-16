@@ -1,12 +1,17 @@
 <script setup lang="ts">
 const open = ref(false)
 const sidebarCollapsed = useCookie<boolean>('identity-console-sidebar-collapsed', {
-  default: () => true,
+  default: () => false,
   sameSite: 'lax'
 })
 
-const localePath = useLocalePath()
 const { t } = useI18n()
+
+useHead({
+  bodyAttrs: {
+    class: 'identity-console-theme'
+  }
+})
 
 const identityAccess = useIdentityAccess()
 const userSession = useUserSession()
@@ -40,36 +45,18 @@ const { primaryLinks, secondaryLinks, searchGroups }
     :search-label="t('identityConsole.accessibility.search')"
   >
     <template #sidebar-header="{ collapsed }">
-      <NuxtLink
-        :to="localePath('/admin/projects')"
-        class="flex min-w-0 items-center rounded-lg p-1 transition hover:bg-elevated focus-visible:outline-2 focus-visible:outline-primary"
-        :class="collapsed ? 'justify-center' : undefined"
-        :aria-label="t('identityConsole.brand')"
-      >
-        <AppLogo
-          :collapsed="collapsed"
-          :brand="t('identityConsole.brand')"
-        />
-      </NuxtLink>
+      <IdentityConsoleBrand
+        to="/admin"
+        :collapsed="collapsed"
+      />
     </template>
 
     <template #sidebar-start="{ collapsed }">
-      <div class="space-y-3 pb-2">
+      <div class="pb-2">
         <UDashboardSearchButton
           :aria-label="t('identityConsole.accessibility.search')"
           :collapsed="collapsed"
-          class="bg-transparent ring-default"
-        />
-
-        <UBadge
-          v-if="!collapsed"
-          color="primary"
-          variant="soft"
-          :label="
-            identitySession?.projectName
-              || t('identityConsole.administration')
-          "
-          class="mx-2"
+          class="w-full bg-transparent ring-default"
         />
       </div>
     </template>

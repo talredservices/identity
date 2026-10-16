@@ -19,6 +19,7 @@ final class IdentityAuthorizationCode extends Model
         'client_id',
         'source_refresh_family_id',
         'code_hash',
+        'reauthentication_cipher',
         'redirect_uri',
         'expires_at',
         'consumed_at',

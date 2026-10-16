@@ -91,6 +91,19 @@ final class IdentityClient extends AggregateRoot
         $this->touch();
     }
 
+    public function changeName(string $name): void
+    {
+        $name = trim($name);
+        $this->assertName($name);
+
+        if ($name === $this->name) {
+            return;
+        }
+
+        $this->name = $name;
+        $this->touch();
+    }
+
     public function id(): IdentityClientId
     {
         return $this->id;

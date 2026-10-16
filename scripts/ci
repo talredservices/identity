@@ -4,57 +4,42 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
-node_run() {
-  local command="$1"
-  if [[ "${CI_RUNTIME:-docker}" == "host" ]]; then
-    bash -lc "$command"
-    return
-  fi
-
-  docker run --rm --user "$(id -u):$(id -g)" \
-    -e CI=true \
-    -e PNPM_CONFIG_STORE_DIR=/tmp/pnpm-store \
-    -e COREPACK_HOME=/tmp/corepack \
-    -e NUXT_SESSION_PASSWORD=ci-only-session-password-with-at-least-32-characters \
-    -v "$root:/workspace" -w /workspace node:24.11-bookworm \
-    bash -lc "mkdir -p /tmp/corepack-bin && corepack enable --install-directory /tmp/corepack-bin && export PATH=/tmp/corepack-bin:\$PATH && $command"
+frontend() {
+  CI=true pnpm install --frozen-lockfile
+  pnpm lint
+  pnpm build
 }
 
-frontend() { node_run 'pnpm install --frozen-lockfile && pnpm lint'; }
 backend() {
+  for extension in pdo_sqlite sqlite3 gd; do
+    php -m | grep -Fxq "$extension" || {
+      echo "PHP extension is required by the GitHub test job: $extension" >&2
+      return 78
+    }
+  done
   composer --working-dir=apps/identity-server validate --strict
   composer --working-dir=apps/identity-server install --prefer-dist --no-interaction --no-progress
   composer --working-dir=apps/identity-server lint
   composer --working-dir=apps/identity-server test
 }
+
 security() {
+  ./scripts/check-dco.sh origin/main
   ./scripts/check-tracked-secrets.sh
   IDENTITY_ENV_FILE=.env.production.example docker compose --env-file .env.production.example config --quiet
-  node_run 'pnpm install --frozen-lockfile && pnpm audit --prod'
+  pnpm run security:audit:js
   composer --working-dir=apps/identity-server audit --locked
 }
-images() {
-  for dockerfile in docker/identity-server/Dockerfile docker/identity-server/nginx.Dockerfile docker/identity-console/Dockerfile; do
-    image "$dockerfile"
-  done
-}
-image() {
-  local dockerfile="$1" tag
-  tag="${dockerfile//\//-}"
-  tag="${tag,,}"
-  docker build --file "$dockerfile" --tag "local/ci-$tag" .
-}
-dco() { ./scripts/check-dco.sh "${1:-origin/main}"; }
 
-case "${1:-fast}" in
-  frontend) frontend ;;
-  build) node_run 'pnpm build' ;;
-  backend) backend ;;
-  security) security ;;
-  images) images ;;
-  dco) dco "${2:-origin/main}" ;;
-  fast) dco; frontend; backend; security ;;
-  full) dco; frontend; backend; security; node_run 'pnpm build'; images ;;
-  image) image "${2:?Dockerfile required}" ;;
-  *) echo "Usage: $0 {fast|full|frontend|build|backend|security|images|image <Dockerfile>|dco [base-ref]}" >&2; exit 64 ;;
+fast() {
+  git diff --check
+  frontend
+  backend
+  security
+}
+
+case "${1:-pre-push}" in
+  fast|pre-push) fast ;;
+  full) fast ;;
+  *) echo "Usage: $0 {fast|pre-push|full}" >&2; exit 64 ;;
 esac

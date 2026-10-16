@@ -19,6 +19,25 @@
 	--color-green-950: #052e16;
 }
 
+.identity-console-theme {
+	--ui-color-primary-50: #effcf8;
+	--ui-color-primary-100: #d8f7ed;
+	--ui-color-primary-200: #b2eddb;
+	--ui-color-primary-300: #7dd9bd;
+	--ui-color-primary-400: #42b99d;
+	--ui-color-primary-500: #16937d;
+	--ui-color-primary-600: #0b7867;
+	--ui-color-primary-700: #096052;
+	--ui-color-primary-800: #0b4c42;
+	--ui-color-primary-900: #0b4038;
+	--ui-color-primary-950: #052a25;
+	--ui-primary: var(--ui-color-primary-600);
+}
+
+.dark .identity-console-theme {
+	--ui-primary: var(--ui-color-primary-400);
+}
+
 .dark {
 	--ui-bg: var(--ui-color-neutral-950);
 	--ui-bg-muted: var(--ui-color-neutral-900);

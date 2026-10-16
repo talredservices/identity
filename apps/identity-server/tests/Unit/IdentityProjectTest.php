@@ -16,10 +16,10 @@ final class IdentityProjectTest extends TestCase
 {
     public function test_new_project_starts_with_safe_production_defaults(): void
     {
-        $project = IdentityProject::create('Job Tracker', 'job-tracker', 'Identity boundary');
+        $project = IdentityProject::create('Example Application', 'example-application', 'Identity boundary');
 
-        $this->assertSame('Job Tracker', $project->name());
-        $this->assertSame('job-tracker', $project->slug());
+        $this->assertSame('Example Application', $project->name());
+        $this->assertSame('example-application', $project->slug());
         $this->assertSame(IdentityProjectStatus::Active, $project->status());
         $this->assertSame(IdentityProjectMode::Live, $project->mode());
         $this->assertSame(60, $project->sandboxTtlMinutes());
@@ -33,7 +33,7 @@ final class IdentityProjectTest extends TestCase
 
     public function test_registration_and_environment_are_changed_through_domain_behavior(): void
     {
-        $project = IdentityProject::create('Job Tracker', 'job-tracker');
+        $project = IdentityProject::create('Example Application', 'example-application');
 
         $project->configureRegistration(IdentityProjectRegistrationMode::Public, 'role-id', false);
         $project->configureEnvironment(IdentityProjectMode::Sandbox, 90);
@@ -47,7 +47,7 @@ final class IdentityProjectTest extends TestCase
 
     public function test_sandbox_lifetime_is_enforced_inside_the_domain(): void
     {
-        $project = IdentityProject::create('Job Tracker', 'job-tracker');
+        $project = IdentityProject::create('Example Application', 'example-application');
 
         $this->expectException(InvalidIdentityProjectConfigurationException::class);
         $project->configureEnvironment(IdentityProjectMode::Sandbox, 4);
@@ -55,7 +55,7 @@ final class IdentityProjectTest extends TestCase
 
     public function test_project_deletion_can_be_scheduled_and_cancelled_without_losing_prior_status(): void
     {
-        $project = IdentityProject::create('Job Tracker', 'job-tracker');
+        $project = IdentityProject::create('Example Application', 'example-application');
         $project->configureEnvironment(IdentityProjectMode::Sandbox, 90);
         $deadline = new DateTimeImmutable('+30 days');
 
@@ -74,7 +74,7 @@ final class IdentityProjectTest extends TestCase
 
     public function test_project_suspension_is_reversible_and_cannot_override_scheduled_deletion(): void
     {
-        $project = IdentityProject::create('Job Tracker', 'job-tracker');
+        $project = IdentityProject::create('Example Application', 'example-application');
 
         $this->assertTrue($project->suspend());
         $this->assertSame(IdentityProjectStatus::Suspended, $project->status());

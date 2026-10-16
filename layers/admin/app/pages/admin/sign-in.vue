@@ -4,6 +4,11 @@ definePageMeta({ layout: false })
 const route = useRoute()
 const localePath = useLocalePath()
 const { t } = useI18n()
+useHead({
+  bodyAttrs: {
+    class: 'identity-console-theme'
+  }
+})
 const { login } = useIdentityAuth()
 const form = reactive({ email: '', password: '' })
 const pending = ref(false)
@@ -94,22 +99,30 @@ async function submit() {
 </script>
 
 <template>
-  <main class="relative flex min-h-screen items-center justify-center bg-default px-6 py-12">
-    <div class="absolute end-4 top-4 sm:end-6 sm:top-6">
-      <IdentityConsoleControls />
-    </div>
+  <div class="identity-admin-sign-in min-h-screen bg-default">
+    <UHeader :ui="{ container: 'max-w-7xl' }">
+      <template #left>
+        <IdentityConsoleBrand to="/admin/sign-in" />
+      </template>
 
-    <div class="w-full max-w-md">
-      <div class="mb-4 flex items-center gap-3 rounded-2xl border border-default bg-elevated/40 px-3 py-2">
-        <AppLogo :brand="t('identityConsole.brand')" />
-      </div>
+      <template #right>
+        <IdentityConsoleControls compact />
+      </template>
+    </UHeader>
 
-      <UPageCard
-        class="w-full"
-      >
-        <p class="-mt-1 text-sm leading-6 text-muted">
-          {{ t('identityConsole.signIn.description') }}
-        </p>
+    <main class="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-12 sm:px-6">
+      <UPageCard class="w-full max-w-md">
+        <div class="mb-6 space-y-3 text-center">
+          <IdentityAuthBrandMark class="mx-auto" />
+          <div class="space-y-1.5">
+            <h1 class="text-xl font-semibold tracking-tight text-highlighted">
+              {{ t('identityConsole.signIn.title') }}
+            </h1>
+            <p class="text-sm leading-6 text-muted">
+              {{ t('identityConsole.signIn.description') }}
+            </p>
+          </div>
+        </div>
 
         <form
           class="space-y-5"
@@ -147,11 +160,11 @@ async function submit() {
             type="submit"
             block
             :label="t('identityConsole.signIn.submit')"
-            icon="i-lucide-log-in"
+            trailing-icon="i-lucide-arrow-right"
             :loading="pending"
           />
         </form>
       </UPageCard>
-    </div>
-  </main>
+    </main>
+  </div>
 </template>

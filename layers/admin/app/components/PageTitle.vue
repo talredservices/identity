@@ -12,7 +12,7 @@ const props = withDefaults(defineProps<{
     <UIcon
       v-if="props.icon"
       :name="props.icon"
-      class="size-4 shrink-0 text-muted"
+      class="size-5 shrink-0 text-primary"
     />
     <span class="truncate font-semibold text-highlighted">
       {{ props.title }}

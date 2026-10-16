@@ -1,0 +1,35 @@
+import { createError, defineEventHandler, getRouterParam, readValidatedBody } from 'h3'
+import { z } from 'zod/v4'
+
+const authenticationSchema = z.object({
+  google_enabled: z.boolean(),
+  terms_required: z.boolean(),
+  terms_url: z.url().max(2048).nullable(),
+  privacy_url: z.url().max(2048).nullable()
+})
+
+const schema = z.object({
+  name: z.string().trim().min(2).max(200),
+  primary_client_id: z.uuid(),
+  sandbox_client_id: z.uuid().nullable(),
+  application_url: z.url().max(2048),
+  callback_url: z.url().max(2048),
+  authentication_mode: z.literal('hosted').optional().default('hosted'),
+  policy_revision: z.string().max(128).nullable().optional(),
+  status: z.enum(['active', 'disabled']),
+  authentication: authenticationSchema
+}).refine(body => !body.authentication.terms_required || body.authentication.terms_url !== null, {
+  message: 'A Terms of Service URL is required when terms acceptance is enabled.',
+  path: ['authentication', 'terms_url']
+})
+
+export default defineEventHandler(async (event) => {
+  const id = getRouterParam(event, 'id')
+  const application = getRouterParam(event, 'application')
+  if (!id || !application) throw createError({ statusCode: 400, statusMessage: 'Hosted application ID is required.' })
+  const body = await readValidatedBody(event, schema.parse)
+  return await identityApi(event, `/api/v1/identity/projects/${id}/applications/${application}`, {
+    method: 'PATCH',
+    body
+  })
+})

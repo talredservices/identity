@@ -14,20 +14,21 @@ final class LaravelAccountDataExporter implements AccountDataExporterInterface
     public function export(UserId $userId): array
     {
         $id = (string) $userId->get('value');
-        $account = DB::table('users')
-            ->where('id', $id)
-            ->first([
-                'id',
-                'username',
-                'email',
-                'email_verified_at',
-                'profile_picture',
-                'theme_preference',
-                'language_preference',
-                'provider_id',
-                'created_at',
-                'updated_at',
-            ]);
+        $accountColumns = array_values(array_intersect([
+            'id',
+            'username',
+            'email',
+            'email_verified_at',
+            'profile_picture',
+            'theme_preference',
+            'language_preference',
+            'provider_id',
+            'created_at',
+            'updated_at',
+        ], Schema::hasTable('users') ? Schema::getColumnListing('users') : []));
+        $account = in_array('id', $accountColumns, true)
+            ? DB::table('users')->where('id', $id)->first($accountColumns)
+            : null;
 
         $jobOffers = $this->rowsByUserId('job_offers', $id);
         $documentIds = collect($this->rowsByUserId('editor_documents', $id))

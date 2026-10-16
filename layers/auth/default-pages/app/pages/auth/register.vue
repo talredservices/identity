@@ -42,6 +42,9 @@ const { data: experience } = await useFetch<IdentityAuthenticationExperience & {
   { query: computed(() => hosted.value ? { application: hostedApplication.value } : {}), immediate: hosted }
 )
 const hostedAuthentication = computed(() => experience.value?.application?.authentication)
+const consentLabel = computed(() => hostedAuthentication.value?.privacyUrl
+  ? 'I have read and agree to the Terms of Service and Privacy Policy.'
+  : 'I have read and agree to the Terms of Service.')
 const termsRequired = computed(() => hostedAuthentication.value?.termsRequired ?? false)
 const googleEnabled = computed(() => hosted.value && hostedAuthentication.value?.googleEnabled === true)
 const googlePending = ref(false)
@@ -120,7 +123,9 @@ async function createAccount(termsAccepted: boolean) {
         await navigateTo(result.redirectUrl, { external: true })
         return
       }
-      await navigateTo(identityAuthPagePath('verify-email', route.params.pageSet, { application: hostedApplication.value, state: hostedState.value }))
+      await navigateTo({
+        ...identityAuthPagePath('verify-email', route.params.pageSet, { application: hostedApplication.value, state: hostedState.value })
+      })
       return
     }
 
@@ -177,7 +182,6 @@ async function continueWithGoogle() {
         :providers="providers"
         title="Create account"
         description="Create an account for this application."
-        icon="i-lucide-user-round-plus"
         :submit="{ label: 'Continue' }"
         @submit="continueToPassword"
       >
@@ -204,7 +208,6 @@ async function continueWithGoogle() {
         :validate-on="['input']"
         title="Secure your account"
         description="Choose a password to finish creating your account."
-        icon="i-lucide-lock-keyhole"
         :submit="{ label: 'Create account', loading: pending }"
         @submit="requestAccountCreation"
       >
@@ -233,43 +236,83 @@ async function continueWithGoogle() {
       description="Confirm the legal terms before creating your account."
     >
       <template #body>
-        <div class="space-y-5">
-          <p class="text-sm text-muted">
-            Please review the
+        <div class="space-y-5 sm:space-y-6">
+          <div class="grid gap-3 sm:grid-cols-2">
             <a
               v-if="hostedAuthentication?.termsUrl"
               :href="hostedAuthentication.termsUrl"
               target="_blank"
               rel="noopener noreferrer"
-              class="text-primary font-medium"
-            >Terms of Service</a><template v-if="hostedAuthentication?.termsUrl && hostedAuthentication?.privacyUrl">
-              and
-            </template><a
+              class="group flex min-w-0 items-center gap-3 rounded-xl border border-default bg-elevated p-4 transition-colors hover:border-primary"
+            >
+              <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-primary">
+                <UIcon
+                  name="i-lucide-file-text"
+                  class="size-5"
+                  aria-hidden="true"
+                />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-sm font-medium text-highlighted">Terms of Service</span>
+                <span class="mt-1 block text-xs text-muted">Open policy</span>
+              </span>
+              <UIcon
+                name="i-lucide-arrow-up-right"
+                class="size-4 shrink-0 text-muted transition-colors group-hover:text-primary"
+                aria-hidden="true"
+              />
+            </a>
+            <a
               v-if="hostedAuthentication?.privacyUrl"
               :href="hostedAuthentication.privacyUrl"
               target="_blank"
               rel="noopener noreferrer"
-              class="text-primary font-medium"
-            >Privacy Policy</a>.
-          </p>
-          <UCheckbox
-            v-model="consentAccepted"
-            label="I have read and agree to the Terms of Service and Privacy Policy."
-          />
-          <div class="flex justify-end gap-2">
-            <UButton
-              label="Cancel"
-              color="neutral"
-              variant="ghost"
-              @click="consentOpen = false"
-            />
-            <UButton
-              label="Accept"
-              :disabled="!consentAccepted"
-              :loading="pending"
-              @click="acceptConsent"
+              class="group flex min-w-0 items-center gap-3 rounded-xl border border-default bg-elevated p-4 transition-colors hover:border-primary"
+            >
+              <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-primary">
+                <UIcon
+                  name="i-lucide-lock-keyhole"
+                  class="size-5"
+                  aria-hidden="true"
+                />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-sm font-medium text-highlighted">Privacy Policy</span>
+                <span class="mt-1 block text-xs text-muted">Open policy</span>
+              </span>
+              <UIcon
+                name="i-lucide-arrow-up-right"
+                class="size-4 shrink-0 text-muted transition-colors group-hover:text-primary"
+                aria-hidden="true"
+              />
+            </a>
+          </div>
+
+          <div class="rounded-xl border border-default bg-muted p-4 sm:p-5">
+            <UCheckbox
+              v-model="consentAccepted"
+              :label="consentLabel"
             />
           </div>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+          <UButton
+            label="Cancel"
+            color="neutral"
+            variant="outline"
+            class="w-full justify-center sm:w-auto"
+            @click="consentOpen = false"
+          />
+          <UButton
+            label="Accept and create account"
+            icon="i-lucide-check"
+            :disabled="!consentAccepted"
+            :loading="pending"
+            class="w-full justify-center sm:w-auto"
+            @click="acceptConsent"
+          />
         </div>
       </template>
     </UModal>

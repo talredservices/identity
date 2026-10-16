@@ -6,6 +6,7 @@ namespace App\Services\UserManagementService\Application\Services\Identity;
 
 use App\Services\UserManagementService\Application\Commands\Identity\AcceptIdentityInvitation\AcceptIdentityInvitationCommand;
 use App\Services\UserManagementService\Application\Commands\Identity\ExecuteIdentityAccess\ExecuteIdentityAccessCommand;
+use App\Services\UserManagementService\Application\Commands\Identity\ExecuteIdentityAccountSecurity\ExecuteIdentityAccountSecurityCommand;
 use App\Services\UserManagementService\Application\Commands\Identity\ExecuteIdentityHandoff\ExecuteIdentityHandoffCommand;
 use App\Services\UserManagementService\Application\Commands\Identity\ExecuteIdentityPasswordRecovery\ExecuteIdentityPasswordRecoveryCommand;
 use App\Services\UserManagementService\Application\Commands\Identity\ExecuteIdentitySession\ExecuteIdentitySessionCommand;
@@ -28,6 +29,14 @@ final readonly class ExecuteIdentityAuthenticationService
 
     public function __invoke(IdentityOperationDTO $dto): mixed
     {
+        if (in_array($dto->operation, ['auth.reauthenticate', 'auth.account.password'], true)) {
+            return $this->execute(ExecuteIdentityAccountSecurityCommand::class, [
+                'operation' => $dto->operation,
+                'accessToken' => $dto->accessToken ?? throw new InvalidArgumentException('An Identity access token is required.'),
+                'input' => $dto->input,
+            ]);
+        }
+
         if (($operation = IdentityAccessOperation::tryFrom($dto->operation)) !== null) {
             return $this->execute(ExecuteIdentityAccessCommand::class, [
                 'operation' => $operation,

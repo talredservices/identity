@@ -1,6 +1,4 @@
-FROM composer:2@sha256:d8f6343d3fae98107426bc49163ccad46ef85aabd4a27d80a74401fab4aba332 AS composer
-
-FROM php:8.3-fpm-alpine@sha256:bf90236449d333cef008b1f01c72a3d4f11a6470a74629665e4c6b6158f03fc8
+FROM php:8.3-fpm-alpine
 
 RUN apk add --no-cache $PHPIZE_DEPS icu-dev libzip-dev oniguruma-dev \
     && docker-php-ext-install bcmath intl mbstring pdo_mysql zip \
@@ -8,7 +6,7 @@ RUN apk add --no-cache $PHPIZE_DEPS icu-dev libzip-dev oniguruma-dev \
     && docker-php-ext-enable redis \
     && apk del $PHPIZE_DEPS
 
-COPY --from=composer /usr/bin/composer /usr/bin/composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
