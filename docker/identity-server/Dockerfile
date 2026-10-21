@@ -2,7 +2,7 @@ FROM php:8.3-fpm-alpine
 
 RUN apk add --no-cache $PHPIZE_DEPS icu-dev libzip-dev oniguruma-dev \
     && docker-php-ext-install bcmath intl mbstring pdo_mysql zip \
-    && pecl install redis \
+    && pecl install redis-6.2.0 \
     && docker-php-ext-enable redis \
     && apk del $PHPIZE_DEPS
 
