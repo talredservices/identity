@@ -55,3 +55,13 @@ the host's installed dependencies. Put these mappings in Nuxt's
 `typescript.appTsConfig.compilerOptions.paths`; edits to the root `tsconfig`
 do not reach Nuxt 4's generated app project. Keep this configuration host-owned
 and avoid adding consumer code or dependencies to the public Identity source.
+
+## PECL Redis 6.3.0 release metadata (2026-10-21)
+
+The identity-server image build failed because `pecl install redis` resolved
+Redis 6.3.0, whose PECL release metadata is missing the REST XML required by
+the installer. Pin the production and development images to `redis-6.2.0`
+until PECL publishes complete metadata for 6.3.0 or a later release. The
+upstream issue is tracked at
+[phpredis/phpredis#2870](https://github.com/phpredis/phpredis/issues/2870);
+the pinned release remains published on [PECL](https://pecl.php.net/package/redis/6.2.0).
