@@ -29,8 +29,12 @@ final class EloquentIdentityHostedApplicationContextRepository implements Resolv
 
         return new IdentityHostedApplicationContext(
             applicationId: (string) $application->getAttribute('id'),
+            applicationKey: (string) $application->getAttribute('key'),
             clientId: (string) $client->getAttribute('id'),
             callbackUrl: (string) $application->getAttribute('callback_url'),
+            policyRevision: $application->getAttribute('policy_revision') !== null
+                ? (string) $application->getAttribute('policy_revision')
+                : null,
             authentication: (array) $application->getAttribute('authentication'),
         );
     }

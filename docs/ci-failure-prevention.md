@@ -1,5 +1,18 @@
 # CI failure prevention
 
+## Owner recovery key and Laravel configuration
+
+The owner-recovery feature test failed in a workspace with a configured
+`IDENTITY_RECOVERY_KEY`: the test's `putenv()` value did not replace the value
+already loaded by Laravel's immutable environment repository. The command also
+read `env()` at runtime, which is not reliable after Laravel configuration is
+cached.
+
+Keep `IDENTITY_RECOVERY_KEY` mapped in `config/zolta.php`, read it in the
+command with `config('zolta.identity.recovery_key')`, and set the config value
+directly in tests. Keep the example environment value blank and never print or
+record the configured secret.
+
 ## Production audit and Nuxt peer dependencies
 
 The workspace-wide `pnpm audit --prod` treated the Nuxt peer dependency in
@@ -22,3 +35,23 @@ and [braces GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6
 Do not hide them with audit ignores or dependency overrides to unavailable
 versions. Revisit the dependency graph and audit scope when upstream publishes
 patched releases or Identity changes which package owns Nuxt.
+
+## Sandbox creation must not share unnamed throttle buckets
+
+Local sandbox browser verification returned 429 after ordinary hosted context
+traffic, because unnamed `throttle:20,1` shared Laravel's domain/IP request key
+with other numeric throttles. Both sandbox creation routes now use the named
+`identity-sandbox-session` limiter. Its ceiling remains 20 requests per IP per
+minute, shared by generic and hosted entry, while context and configuration
+requests do not consume it. The focused feature regression exhausts context
+traffic, verifies 20 sandbox attempts, then checks 429 on both entry routes.
+
+## External hosted-auth page-set type resolution
+
+The local Identity host can load consumer-owned page sets from a sibling
+repository through `IDENTITY_HOSTED_AUTH_INTEGRATIONS`. Those files compile as
+part of the Identity app, so their `vue` and `@nuxt/ui` imports must resolve to
+the host's installed dependencies. Put these mappings in Nuxt's
+`typescript.appTsConfig.compilerOptions.paths`; edits to the root `tsconfig`
+do not reach Nuxt 4's generated app project. Keep this configuration host-owned
+and avoid adding consumer code or dependencies to the public Identity source.

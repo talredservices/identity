@@ -6,9 +6,11 @@ namespace Tests\Feature;
 
 use App\Services\UserManagementService\Application\Contracts\Identity\Authentication\ManageIdentityAccountSecurity;
 use App\Services\UserManagementService\Application\Contracts\Identity\Projects\CreateIdentityProject;
+use App\Services\UserManagementService\Application\Contracts\Identity\Projects\ManageIdentityClients;
 use App\Services\UserManagementService\Application\Contracts\OAuthGateway;
 use App\Services\UserManagementService\Application\DTOs\External\OAuthUser;
 use App\Services\UserManagementService\Application\Exceptions\IdentityAuthenticationException;
+use App\Services\UserManagementService\Application\Exceptions\IdentityAuthorizationException;
 use App\Services\UserManagementService\Infrastructure\Jobs\DeliverIdentityWebhook;
 use App\Services\UserManagementService\Infrastructure\Models\Eloquent\IdentityAccessCatalogPermission;
 use App\Services\UserManagementService\Infrastructure\Models\Eloquent\IdentityAccessCatalogRole;
@@ -334,6 +336,30 @@ final class IdentityAccessServiceTest extends TestCase
         ])->assertCreated();
     }
 
+    public function test_sandbox_session_throttle_is_isolated_from_context_traffic_and_keeps_its_limit(): void
+    {
+        [, , $client, $secret] = $this->identityFixture();
+        $credentials = ['client_id' => $client->id, 'client_secret' => $secret];
+
+        for ($attempt = 0; $attempt < 30; $attempt++) {
+            $this->postJson('/api/v1/identity/auth/context', $credentials)->assertOk();
+        }
+
+        // Invalid credentials count without creating twenty disposable users.
+        $invalidCredentials = ['client_id' => $client->id, 'client_secret' => Str::random(64)];
+        for ($attempt = 0; $attempt < 20; $attempt++) {
+            $this->postJson('/api/v1/identity/auth/sandbox-session', $invalidCredentials)
+                ->assertUnauthorized();
+        }
+        $this->postJson('/api/v1/identity/auth/sandbox-session', $invalidCredentials)
+            ->assertTooManyRequests();
+
+        config()->set('identity.hosted_applications.internal_token', 'hosted-application-test-token');
+        $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
+            ->postJson('/api/v1/identity/hosted-applications/example-app/auth/sandbox-session')
+            ->assertTooManyRequests();
+    }
+
     public function test_authorization_intent_carries_the_client_bound_demo_policy_once(): void
     {
         [, $project, $client, $secret] = $this->identityFixture();
@@ -596,6 +622,11 @@ final class IdentityAccessServiceTest extends TestCase
             ->assertCreated()
             ->json('data');
 
+        $this->assertDatabaseMissing('identity_hosted_application_consents', [
+            'hosted_application_id' => IdentityHostedApplication::query()->where('key', 'demo-app')->value('id'),
+            'user_id' => $session['identity']['user']['id'],
+        ]);
+
         $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
             ->withToken($session['access_token'])
             ->postJson('/api/v1/identity/hosted-applications/demo-app/auth/handoff', ['connection' => 'primary'])
@@ -613,6 +644,336 @@ final class IdentityAccessServiceTest extends TestCase
             'code' => $code,
             'redirect_uri' => 'https://demo.example.test/api/auth/callback',
         ])->assertOk();
+    }
+
+    public function test_hosted_sandbox_session_returns_422_without_required_policy_acceptance_and_records_it_when_accepted(): void
+    {
+        [, $project, $primaryClient] = $this->identityFixture();
+        $sandboxProject = IdentityProject::query()->create([
+            'name' => 'Example Application sandbox',
+            'slug' => 'example-app-sandbox-'.Str::random(6),
+            'status' => 'active',
+            'mode' => 'sandbox',
+            'sandbox_ttl_minutes' => 60,
+            'registration_mode' => 'invite_only',
+        ]);
+        $sandboxClient = IdentityProjectClient::query()->create([
+            'project_id' => $sandboxProject->id,
+            'name' => 'Example Application sandbox BFF',
+            'secret_hash' => hash('sha256', Str::random(64)),
+            'secret_prefix' => 'sandbox',
+            'status' => 'active',
+        ]);
+        $application = IdentityHostedApplication::query()->create([
+            'project_id' => $project->id,
+            'primary_client_id' => $primaryClient->id,
+            'sandbox_client_id' => $sandboxClient->id,
+            'key' => 'terms-demo-app',
+            'name' => 'Terms Demo App',
+            'application_url' => 'https://terms-demo.example.test',
+            'callback_url' => 'https://terms-demo.example.test/auth/callback',
+            'policy_revision' => '2026-10',
+            'authentication' => [
+                'terms_required' => true,
+                'terms_url' => 'https://terms-demo.example.test/terms',
+                'privacy_url' => 'https://terms-demo.example.test/privacy',
+            ],
+            'status' => 'active',
+        ]);
+        config()->set('identity.hosted_applications.internal_token', 'hosted-application-test-token');
+        $usersBefore = User::query()->count();
+
+        foreach ([[], ['terms_accepted' => false]] as $payload) {
+            $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
+                ->postJson('/api/v1/identity/hosted-applications/terms-demo-app/auth/sandbox-session', $payload)
+                ->assertUnprocessable();
+
+            $this->assertSame($usersBefore, User::query()->count());
+        }
+
+        $session = $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
+            ->postJson('/api/v1/identity/hosted-applications/terms-demo-app/auth/sandbox-session', [
+                'terms_accepted' => true,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.is_temporary', true)
+            ->json('data');
+        $account = IdentityProjectAccount::query()
+            ->where('project_id', $sandboxProject->id)
+            ->where('user_id', $session['identity']['user']['id'])
+            ->firstOrFail();
+
+        $this->assertDatabaseHas('identity_hosted_application_consents', [
+            'hosted_application_id' => $application->id,
+            'user_id' => $session['identity']['user']['id'],
+            'project_account_id' => $account->id,
+            'terms_url' => 'https://terms-demo.example.test/terms',
+            'privacy_url' => 'https://terms-demo.example.test/privacy',
+            'policy_revision' => '2026-10',
+        ]);
+    }
+
+    public function test_hosted_registration_returns_422_without_policy_acceptance_and_records_the_current_policy(): void
+    {
+        [, $project, $client] = $this->identityFixture();
+        $project->forceFill(['registration_mode' => 'public'])->save();
+        $application = IdentityHostedApplication::query()->create([
+            'project_id' => $project->id,
+            'primary_client_id' => $client->id,
+            'key' => 'terms-register-app',
+            'name' => 'Terms Register App',
+            'application_url' => 'https://terms-register.example.test',
+            'callback_url' => 'https://terms-register.example.test/auth/callback',
+            'authentication_mode' => 'app',
+            'policy_revision' => '2026-10',
+            'authentication' => [
+                'terms_required' => true,
+                'terms_url' => 'https://terms-register.example.test/terms',
+                'privacy_url' => 'https://terms-register.example.test/privacy',
+            ],
+            'status' => 'active',
+        ]);
+        config()->set('identity.hosted_applications.internal_token', 'hosted-application-test-token');
+        $payload = [
+            'username' => 'new-policy-user',
+            'email' => 'new-policy-user@example.test',
+            'password' => 'new-policy-user-password',
+            'password_confirmation' => 'new-policy-user-password',
+        ];
+
+        $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
+            ->postJson('/api/v1/identity/hosted-applications/terms-register-app/auth/register', $payload)
+            ->assertUnprocessable();
+
+        $registered = $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
+            ->postJson('/api/v1/identity/hosted-applications/terms-register-app/auth/register', $payload + [
+                'terms_accepted' => true,
+            ])
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertDatabaseHas('identity_hosted_application_consents', [
+            'hosted_application_id' => $application->id,
+            'user_id' => $registered['identity']['user']['id'],
+            'terms_url' => 'https://terms-register.example.test/terms',
+            'privacy_url' => 'https://terms-register.example.test/privacy',
+            'policy_revision' => '2026-10',
+        ]);
+    }
+
+    public function test_hosted_google_account_creation_requires_and_records_current_policy_acceptance(): void
+    {
+        [, $project, $client] = $this->identityFixture();
+        $project->forceFill([
+            'registration_mode' => 'public',
+            'google_social_authentication_enabled' => true,
+        ])->save();
+        $application = IdentityHostedApplication::query()->create([
+            'project_id' => $project->id,
+            'primary_client_id' => $client->id,
+            'key' => 'terms-google-app',
+            'name' => 'Terms Google App',
+            'application_url' => 'https://terms-google.example.test',
+            'callback_url' => 'https://terms-google.example.test/auth/callback',
+            'authentication_mode' => 'app',
+            'policy_revision' => '2026-10',
+            'authentication' => [
+                'terms_required' => true,
+                'terms_url' => 'https://terms-google.example.test/terms',
+                'privacy_url' => 'https://terms-google.example.test/privacy',
+            ],
+            'status' => 'active',
+        ]);
+        config()->set('identity.hosted_applications.internal_token', 'hosted-application-test-token');
+        $remote = new OAuthUser(
+            'google-policy-user',
+            'Google Policy User',
+            'google-policy-user@example.test',
+            'google-provider-token',
+            null,
+            null,
+        );
+        $this->mock(OAuthGateway::class, function ($mock) use ($remote): void {
+            $mock->shouldReceive('fetchUser')->with('google', 'google-provider-token')->andReturn($remote);
+        });
+        $usersBefore = User::query()->count();
+
+        $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
+            ->postJson('/api/v1/identity/hosted-applications/terms-google-app/auth/social', [
+                'provider' => 'google',
+                'access_token' => 'google-provider-token',
+                'terms_accepted' => false,
+            ])
+            ->assertForbidden();
+        $this->assertSame($usersBefore, User::query()->count());
+
+        $identity = $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
+            ->postJson('/api/v1/identity/hosted-applications/terms-google-app/auth/social', [
+                'provider' => 'google',
+                'access_token' => 'google-provider-token',
+                'terms_accepted' => true,
+            ])
+            ->assertOk()
+            ->json('data');
+
+        $this->assertDatabaseHas('identity_hosted_application_consents', [
+            'hosted_application_id' => $application->id,
+            'user_id' => $identity['identity']['user']['id'],
+            'terms_url' => 'https://terms-google.example.test/terms',
+            'privacy_url' => 'https://terms-google.example.test/privacy',
+            'policy_revision' => '2026-10',
+        ]);
+    }
+
+    public function test_demo_only_auth_returns_403_for_primary_operations_and_keeps_sandbox_sessions_available(): void
+    {
+        [, $project, $primaryClient] = $this->identityFixture();
+        $sandboxProject = IdentityProject::query()->create([
+            'name' => 'Example Application sandbox',
+            'slug' => 'example-app-sandbox-'.Str::random(6),
+            'status' => 'active',
+            'mode' => 'sandbox',
+            'sandbox_ttl_minutes' => 60,
+            'registration_mode' => 'invite_only',
+        ]);
+        $sandboxClient = IdentityProjectClient::query()->create([
+            'project_id' => $sandboxProject->id,
+            'name' => 'Example Application sandbox BFF',
+            'secret_hash' => hash('sha256', Str::random(64)),
+            'secret_prefix' => 'sandbox',
+            'status' => 'active',
+        ]);
+        IdentityHostedApplication::query()->create([
+            'project_id' => $project->id,
+            'primary_client_id' => $primaryClient->id,
+            'sandbox_client_id' => $sandboxClient->id,
+            'key' => 'demo-only-app',
+            'name' => 'Demo Only App',
+            'application_url' => 'https://demo-only.example.test',
+            'callback_url' => 'https://demo-only.example.test/auth/callback',
+            'authentication' => ['demo_only' => true],
+            'status' => 'active',
+        ]);
+        config()->set('identity.hosted_applications.internal_token', 'hosted-application-test-token');
+
+        $primaryAuthenticationAttempts = [
+            ['/auth/login', ['email' => 'demo@example.test', 'password' => 'incorrect-password']],
+            ['/auth/register', [
+                'username' => 'demo-user',
+                'email' => 'new-demo@example.test',
+                'password' => 'a-strong-demo-password',
+                'password_confirmation' => 'a-strong-demo-password',
+            ]],
+            ['/auth/social', ['provider' => 'google', 'access_token' => 'google-access-token']],
+            ['/auth/password/forgot', ['email' => 'demo@example.test']],
+            ['/auth/password/reset', [
+                'email' => 'demo@example.test',
+                'token' => Str::random(64),
+                'password' => 'a-new-demo-password',
+                'password_confirmation' => 'a-new-demo-password',
+            ]],
+        ];
+
+        foreach ($primaryAuthenticationAttempts as [$path, $payload]) {
+            $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
+                ->postJson('/api/v1/identity/hosted-applications/demo-only-app'.$path, $payload)
+                ->assertForbidden();
+        }
+
+        $session = $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
+            ->postJson('/api/v1/identity/hosted-applications/demo-only-app/auth/sandbox-session')
+            ->assertCreated()
+            ->assertJsonPath('data.is_temporary', true)
+            ->assertJsonPath('data.identity.project.mode', 'sandbox')
+            ->json('data');
+
+        $this->assertSame(
+            true,
+            User::query()->findOrFail($session['identity']['user']['id'])->is_temporary,
+        );
+    }
+
+    public function test_demo_only_application_returns_403_without_sandbox_client_and_protects_its_active_client(): void
+    {
+        [$administrator, $project, $primaryClient, $secret] = $this->identityFixture(true);
+        $accessToken = $this->login($administrator, $project, $primaryClient, $secret)['access_token'];
+        $applicationPayload = [
+            'name' => 'Demo Only App',
+            'key' => 'demo-only-managed-app',
+            'primary_client_id' => $primaryClient->id,
+            'application_url' => 'https://demo-managed.example.test',
+            'callback_url' => 'https://demo-managed.example.test/auth/callback',
+            'authentication' => ['demo_only' => true],
+        ];
+
+        $this->withToken($accessToken)
+            ->postJson("/api/v1/identity/projects/{$project->id}/applications", $applicationPayload)
+            ->assertForbidden();
+
+        $sandboxProject = IdentityProject::query()->create([
+            'name' => 'Example Application sandbox',
+            'slug' => 'example-app-sandbox-'.Str::random(6),
+            'status' => 'active',
+            'mode' => 'sandbox',
+            'sandbox_ttl_minutes' => 60,
+            'registration_mode' => 'invite_only',
+        ]);
+        IdentityProjectMembership::query()->create([
+            'project_id' => $sandboxProject->id,
+            'user_id' => $administrator->id,
+            'status' => 'active',
+            'is_admin' => true,
+        ]);
+        $sandboxClient = IdentityProjectClient::query()->create([
+            'project_id' => $sandboxProject->id,
+            'name' => 'Example Application sandbox BFF',
+            'secret_hash' => hash('sha256', Str::random(64)),
+            'secret_prefix' => 'sandbox',
+            'status' => 'active',
+        ]);
+
+        $application = $this->withToken($accessToken)
+            ->postJson("/api/v1/identity/projects/{$project->id}/applications", [
+                ...$applicationPayload,
+                'sandbox_client_id' => $sandboxClient->id,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.authentication.demo_only', true)
+            ->json('data');
+
+        $this->assertDatabaseHas('identity_hosted_applications', [
+            'id' => $application['id'],
+            'sandbox_client_id' => $sandboxClient->id,
+        ]);
+        $this->assertSame(
+            true,
+            IdentityHostedApplication::query()->findOrFail($application['id'])->authentication['demo_only'],
+        );
+        config()->set('identity.hosted_applications.internal_token', 'hosted-application-test-token');
+        $this->withHeader('X-Internal-Token', 'hosted-application-test-token')
+            ->getJson('/api/v1/identity/hosted-applications/demo-only-managed-app/configuration')
+            ->assertOk()
+            ->assertJsonPath('data.authentication.demo_only', true);
+
+        try {
+            app(ManageIdentityClients::class)->setClientStatus(
+                (string) $administrator->id,
+                (string) $sandboxProject->id,
+                (string) $sandboxClient->id,
+                'disabled',
+            );
+            $this->fail('The active sandbox client of a demo-only application must remain enabled.');
+        } catch (IdentityAuthorizationException $exception) {
+            $this->assertSame(
+                'This sandbox client is required by an active demo-only hosted application. Disable demo-only sign-in before disabling the client.',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertDatabaseHas('identity_project_clients', [
+            'id' => $sandboxClient->id,
+            'status' => 'active',
+        ]);
     }
 
     public function test_live_project_rejects_sandbox_sessions(): void
@@ -756,7 +1117,7 @@ final class IdentityAccessServiceTest extends TestCase
     public function test_recovery_rotates_owner_credentials_without_erasing_identity_data(): void
     {
         $recoveryKey = 'test-recovery-key-that-is-never-stored-in-the-database';
-        putenv('IDENTITY_RECOVERY_KEY='.$recoveryKey);
+        config()->set('zolta.identity.recovery_key', $recoveryKey);
 
         $this->artisan('identity:bootstrap', [
             'email' => 'owner@example.com',
@@ -786,7 +1147,6 @@ final class IdentityAccessServiceTest extends TestCase
             'target_id' => $owner->getKey(),
         ]);
 
-        putenv('IDENTITY_RECOVERY_KEY');
     }
 
     public function test_bootstrap_creates_owner_console_project_and_client(): void
@@ -1440,7 +1800,8 @@ final class IdentityAccessServiceTest extends TestCase
             ->getJson('/api/v1/identity/hosted-applications/example-app/configuration')
             ->assertOk()
             ->assertJsonPath('data.primary.client_id', $client->id)
-            ->assertJsonPath('data.appearance.background_preset', 'indigo');
+            ->assertJsonPath('data.appearance.background_preset', 'indigo')
+            ->assertJsonPath('data.authentication.demo_only', false);
 
         $this->withToken($accessToken)
             ->patchJson("/api/v1/identity/projects/{$project->id}/hosted-applications/{$created['id']}", [

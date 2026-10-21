@@ -236,7 +236,7 @@ final class IdentityPayloadFactory
         ];
     }
 
-    /** @return array{welcome_text: string|null, accent_color: string|null, background_preset: string, logo_url: string|null, design_tokens: array<string, string>} */
+    /** @return array{brand_name: string|null, brand_badge: string|null, welcome_text: string|null, accent_color: string|null, background_preset: string, logo_url: string|null, design_tokens: array<string, string>} */
     private function hostedApplicationAppearance(IdentityHostedApplication $application): array
     {
         $appearance = $application->appearance ?? [];
@@ -244,6 +244,8 @@ final class IdentityPayloadFactory
         $logoPath = $application->logo_path;
 
         return [
+            'brand_name' => isset($appearance['brand_name']) && is_string($appearance['brand_name']) ? $appearance['brand_name'] : null,
+            'brand_badge' => isset($appearance['brand_badge']) && is_string($appearance['brand_badge']) ? $appearance['brand_badge'] : null,
             'welcome_text' => $appearance['welcome_text'] ?? null,
             'accent_color' => $appearance['accent_color'] ?? null,
             'background_preset' => $appearance['background_preset'] ?? 'identity',
@@ -285,13 +287,14 @@ final class IdentityPayloadFactory
         return $tokens;
     }
 
-    /** @return array{google_enabled: bool, terms_required: bool, terms_url: string|null, privacy_url: string|null} */
+    /** @return array{google_enabled: bool, demo_only: bool, terms_required: bool, terms_url: string|null, privacy_url: string|null} */
     private function hostedApplicationAuthentication(IdentityHostedApplication $application): array
     {
         $authentication = $application->authentication ?? [];
 
         return [
             'google_enabled' => (bool) $application->project?->google_social_authentication_enabled,
+            'demo_only' => (bool) ($authentication['demo_only'] ?? false),
             'terms_required' => (bool) ($authentication['terms_required'] ?? false),
             'terms_url' => $authentication['terms_url'] ?? null,
             'privacy_url' => $authentication['privacy_url'] ?? null,

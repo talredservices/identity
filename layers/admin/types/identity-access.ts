@@ -80,6 +80,7 @@ export type IdentityHostedApplication = {
   }
   authentication: {
     google_enabled: boolean
+    demo_only: boolean
     terms_required: boolean
     terms_url: string | null
     privacy_url: string | null

@@ -1,4 +1,5 @@
 import { inject, unref, type Ref } from 'vue'
+import type { LocationQueryRaw, RouteLocationAsPathGeneric } from 'vue-router'
 import { FetchError } from 'ofetch'
 
 export function identitySafeRedirect(
@@ -53,8 +54,8 @@ export function identityAuthPageSet(value: unknown): string {
 export function identityAuthPagePath(
   screen: string,
   pageSet: unknown,
-  query: Record<string, unknown> = {}
-): { path: string, query: Record<string, unknown> } {
+  query: LocationQueryRaw = {}
+): RouteLocationAsPathGeneric {
   const inheritedPageSet = inject<string | Ref<string | null> | null>(
     'identity-auth-page-set',
     null

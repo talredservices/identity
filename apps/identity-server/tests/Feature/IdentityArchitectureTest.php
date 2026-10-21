@@ -50,7 +50,7 @@ use Zolta\Http\Router\Laravel\Bootstrap\AutoInvokeProxyController;
 
 final class IdentityArchitectureTest extends TestCase
 {
-    private const IDENTITY_ROUTE_SNAPSHOT = '537c55cd52e4c6de56f0f8eb718b319bfa0dc7a1c13edf4c631e3b860f80c237';
+    private const IDENTITY_ROUTE_SNAPSHOT = '86b23d67cb4e7ffef81d9b51c7da63128b20396f0e15f70ba42d5c90bb7b7643';
 
     public function test_identity_api_routes_are_owned_by_the_zolta_attribute_pipeline(): void
     {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import LoginPage from '../login.vue'
+import LoginPage from '../../../components/IdentityHostedLoginPage.vue'
 import RegisterPage from '../register.vue'
 import ForgotPasswordPage from '../forgot-password.vue'
 import ResetPasswordPage from '../reset-password.vue'

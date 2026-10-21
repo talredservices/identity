@@ -86,6 +86,7 @@ return [
     ],
 
     'identity' => [
+        'recovery_key' => env('IDENTITY_RECOVERY_KEY'),
         'access_token_ttl_minutes' => (int) env('IDENTITY_ACCESS_TOKEN_TTL_MINUTES', 15),
         'refresh_token_ttl_days' => (int) env('IDENTITY_REFRESH_TOKEN_TTL_DAYS', 30),
         'invitation_ttl_hours' => (int) env('IDENTITY_INVITATION_TTL_HOURS', 72),

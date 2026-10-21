@@ -554,7 +554,11 @@ final readonly class EloquentIdentityProjectService implements ConfigureIdentity
             'password_reset_url' => $application->password_reset_url,
             'policy_revision' => $application->policy_revision,
         ], $attributes);
-        $this->validateHostedApplicationClients($actorUserId, $projectId, $attributes);
+        $this->validateHostedApplicationClients(
+            $actorUserId,
+            $projectId,
+            array_replace(['authentication' => $application->authentication ?? []], $attributes),
+        );
         $application->fill([
             'name' => $attributes['name'],
             'primary_client_id' => $attributes['primary_client_id'],
@@ -769,6 +773,15 @@ final readonly class EloquentIdentityProjectService implements ConfigureIdentity
         $this->authorization->assertProjectAdministrator($actorUserId, $projectId);
         $client = $this->findClient($projectId, $clientId);
         $clientStatus = IdentityClientStatus::from($status);
+        if ($clientStatus !== IdentityClientStatus::Active
+            && IdentityHostedApplication::query()
+                ->where('sandbox_client_id', $clientId)
+                ->where('status', 'active')
+                ->get(['authentication'])
+                ->contains(fn (IdentityHostedApplication $application): bool => (bool) ($application->authentication['demo_only'] ?? false))) {
+            throw new IdentityAuthorizationException('This sandbox client is required by an active demo-only hosted application. Disable demo-only sign-in before disabling the client.');
+        }
+
         $client->changeStatus($clientStatus);
         $this->clientAggregates->save($client);
 
@@ -1449,7 +1462,7 @@ final readonly class EloquentIdentityProjectService implements ConfigureIdentity
         ];
     }
 
-    /** @param array<string, mixed> $attributes @return array{welcome_text: string|null, accent_color: string|null, background_preset: string, design_tokens: array<string, string>} */
+    /** @param array<string, mixed> $attributes @return array{brand_name: string|null, brand_badge: string|null, welcome_text: string|null, accent_color: string|null, background_preset: string, design_tokens: array<string, string>} */
     private function hostedApplicationAppearance(array $attributes): array
     {
         $appearance = is_array($attributes['appearance'] ?? null) ? $attributes['appearance'] : [];
@@ -1477,6 +1490,12 @@ final readonly class EloquentIdentityProjectService implements ConfigureIdentity
         }
 
         return [
+            'brand_name' => isset($appearance['brand_name']) && $appearance['brand_name'] !== ''
+                ? trim((string) $appearance['brand_name'])
+                : null,
+            'brand_badge' => isset($appearance['brand_badge']) && $appearance['brand_badge'] !== ''
+                ? trim((string) $appearance['brand_badge'])
+                : null,
             'welcome_text' => isset($appearance['welcome_text']) && $appearance['welcome_text'] !== ''
                 ? (string) $appearance['welcome_text']
                 : null,
@@ -1488,7 +1507,7 @@ final readonly class EloquentIdentityProjectService implements ConfigureIdentity
         ];
     }
 
-    /** @param array<string, mixed> $attributes @return array{google_enabled: bool, terms_required: bool, terms_url: string|null, privacy_url: string|null} */
+    /** @param array<string, mixed> $attributes @return array{google_enabled: bool, demo_only: bool, terms_required: bool, terms_url: string|null, privacy_url: string|null} */
     private function hostedApplicationAuthentication(array $attributes): array
     {
         $authentication = is_array($attributes['authentication'] ?? null) ? $attributes['authentication'] : [];
@@ -1496,6 +1515,7 @@ final readonly class EloquentIdentityProjectService implements ConfigureIdentity
 
         return [
             'google_enabled' => (bool) ($authentication['google_enabled'] ?? false),
+            'demo_only' => (bool) ($authentication['demo_only'] ?? false),
             'terms_required' => $termsRequired,
             'terms_url' => $termsRequired && ! empty($authentication['terms_url']) ? (string) $authentication['terms_url'] : null,
             'privacy_url' => ! empty($authentication['privacy_url']) ? (string) $authentication['privacy_url'] : null,
@@ -1528,6 +1548,11 @@ final readonly class EloquentIdentityProjectService implements ConfigureIdentity
         if (($attributes['authentication_mode'] ?? 'hosted') === 'app'
             && ($attributes['authentication']['terms_required'] ?? false) && empty($attributes['policy_revision'])) {
             throw new IdentityAuthorizationException('Application terms require an approved policy revision.');
+        }
+
+        if (($attributes['authentication']['demo_only'] ?? false)
+            && empty($attributes['sandbox_client_id'])) {
+            throw new IdentityAuthorizationException('Demo-only sign-in requires a linked sandbox client.');
         }
 
         $primary = IdentityProjectClient::query()

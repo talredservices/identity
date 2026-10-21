@@ -9,8 +9,10 @@ final readonly class IdentityHostedApplicationContext
     /** @param array<string, mixed> $authentication */
     public function __construct(
         public string $applicationId,
+        public string $applicationKey,
         public string $clientId,
         public string $callbackUrl,
+        public ?string $policyRevision,
         public array $authentication,
     ) {}
 }

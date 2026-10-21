@@ -13,7 +13,7 @@ final class IdentityHostedApplicationConsent extends Model
 
     protected $table = 'identity_hosted_application_consents';
 
-    protected $fillable = ['hosted_application_id', 'user_id', 'project_account_id', 'terms_url', 'policy_revision', 'accepted_at'];
+    protected $fillable = ['hosted_application_id', 'user_id', 'project_account_id', 'terms_url', 'privacy_url', 'policy_revision', 'accepted_at'];
 
     protected function casts(): array
     {

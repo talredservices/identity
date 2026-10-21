@@ -489,6 +489,7 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
             $attributes['hosted_application_id'] = $application->id;
             $attributes['terms_required'] = $termsRequired;
             $attributes['terms_url'] = $application->authentication['terms_url'] ?? null;
+            $attributes['privacy_url'] = $application->authentication['privacy_url'] ?? null;
             $attributes['policy_revision'] = $application->policy_revision;
         }
 
@@ -569,6 +570,7 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
                     'user_id' => $user->id,
                     'project_account_id' => $account->id,
                     'terms_url' => $attributes['terms_url'] ?? null,
+                    'privacy_url' => $attributes['privacy_url'] ?? null,
                     'policy_revision' => $attributes['policy_revision'] ?? null,
                     'accepted_at' => now(),
                 ]);
@@ -690,6 +692,7 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
                     'user_id' => $user->id,
                     'project_account_id' => $projectAccount->id,
                     'terms_url' => $attributes['terms_url'] ?? null,
+                    'privacy_url' => $attributes['privacy_url'] ?? null,
                     'policy_revision' => $attributes['policy_revision'] ?? null,
                     'accepted_at' => now(),
                 ]);
@@ -702,11 +705,16 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
         });
     }
 
+    /**
+     * @param  array{hosted_application_id: string, terms_url?: string|null, privacy_url?: string|null, policy_revision: string}|null  $hostedApplicationConsent
+     * @return array<string, mixed>
+     */
     public function createSandboxSession(
         string $clientId,
         string $clientSecret,
         ?string $ipAddress = null,
         ?string $userAgent = null,
+        ?array $hostedApplicationConsent = null,
     ): array {
         $client = $this->clients->authenticate($clientId, $clientSecret);
         $project = $client->project;
@@ -722,6 +730,7 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
             $client,
             $ipAddress,
             $userAgent,
+            $hostedApplicationConsent,
         ): array {
             $id = (string) Str::uuid();
             $suffix = Str::lower(Str::random(8));
@@ -763,6 +772,18 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
                 'email_verified_at' => now(),
                 'password_changed_at' => now(),
             ]);
+
+            if ($hostedApplicationConsent !== null) {
+                IdentityHostedApplicationConsent::query()->create([
+                    'hosted_application_id' => (string) $hostedApplicationConsent['hosted_application_id'],
+                    'user_id' => $user->id,
+                    'project_account_id' => $account->id,
+                    'terms_url' => $hostedApplicationConsent['terms_url'] ?? null,
+                    'privacy_url' => $hostedApplicationConsent['privacy_url'] ?? null,
+                    'policy_revision' => (string) $hostedApplicationConsent['policy_revision'],
+                    'accepted_at' => now(),
+                ]);
+            }
 
             $tokens = $this->tokens->issuePair($user, $project, $client, $membership);
             $this->audit->record(

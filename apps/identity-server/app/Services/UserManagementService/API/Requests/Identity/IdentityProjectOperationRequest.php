@@ -170,6 +170,8 @@ final class IdentityProjectOperationRequest extends IdentityOperationRequest
     {
         return [
             'appearance' => ['sometimes', 'array'],
+            'appearance.brand_name' => ['nullable', 'string', 'max:80'],
+            'appearance.brand_badge' => ['nullable', 'string', 'max:40'],
             'appearance.welcome_text' => ['nullable', 'string', 'max:280'],
             'appearance.accent_color' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'appearance.background_preset' => ['nullable', Rule::in(['identity', 'slate', 'indigo', 'emerald', 'sunset'])],
@@ -184,6 +186,7 @@ final class IdentityProjectOperationRequest extends IdentityOperationRequest
         return [
             'authentication' => ['sometimes', 'array'],
             'authentication.google_enabled' => ['nullable', 'boolean'],
+            'authentication.demo_only' => ['nullable', 'boolean'],
             'authentication.terms_required' => ['nullable', 'boolean'],
             'authentication.terms_url' => ['nullable', 'url:http,https', 'max:2048'],
             'authentication.privacy_url' => ['nullable', 'url:http,https', 'max:2048'],

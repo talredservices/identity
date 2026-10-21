@@ -119,7 +119,9 @@ final readonly class IdentityGoogleAuthorization implements ManageIdentityGoogle
         $login = $this->authentication->socialLogin($credentials + [
             'provider' => 'google', 'access_token' => $response->json('access_token'),
             'hosted_application_id' => $application->id, 'terms_required' => (bool) $transaction->terms_accepted,
-            'terms_url' => $application->authentication['terms_url'] ?? null, 'policy_revision' => $transaction->policy_revision,
+            'terms_url' => $application->authentication['terms_url'] ?? null,
+            'privacy_url' => $application->authentication['privacy_url'] ?? null,
+            'policy_revision' => $transaction->policy_revision,
         ]);
         $handoff = $this->authentication->createHandoff($login['identity']['user']['id'], $login['access_token'], $credentials + ['redirect_uri' => $callback]);
 

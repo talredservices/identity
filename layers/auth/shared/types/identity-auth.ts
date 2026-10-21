@@ -44,6 +44,8 @@ export type IdentityHostedApplicationMetadata = {
   presentation: {
     pageSet: string
     productName: string
+    brandName: string | null
+    brandBadge: string | null
     welcomeText: string | null
     accentColor: string | null
     backgroundPreset: 'identity' | 'slate' | 'indigo' | 'emerald' | 'sunset'
@@ -52,6 +54,7 @@ export type IdentityHostedApplicationMetadata = {
   }
   authentication: {
     googleEnabled: boolean
+    demoOnly: boolean
     termsRequired: boolean
     termsUrl: string | null
     privacyUrl: string | null

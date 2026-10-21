@@ -20,9 +20,10 @@ const { data: hostedMetadata } = await useFetch<{ application: IdentityHostedApp
   '/api/hosted-auth/application',
   {
     query: computed(() => ({ clientId: hostedClientId.value })),
-    immediate: computed(() => z.uuid().safeParse(hostedClientId.value).success)
+    immediate: z.uuid().safeParse(hostedClientId.value).success
   }
 )
+const demoOnly = computed(() => hostedMetadata.value?.application.authentication.demoOnly === true)
 const hasTokenFromLink = computed(() => typeof route.query.token === 'string' && route.query.token.length >= 64 && route.query.token.length <= 512)
 const hasEmailFromLink = computed(() => typeof route.query.email === 'string' && z.email().max(254).safeParse(route.query.email).success)
 const signInPath = computed(() => identityAuthPagePath('login', route.params.pageSet,
@@ -61,10 +62,10 @@ const schema = z.object({
 })
 type ResetPasswordSchema = z.output<typeof schema>
 const fields = computed(() => [
-  { name: 'email', type: 'email' as const, label: 'Email', placeholder: 'you@example.com', required: true, readonly: hasEmailFromLink.value, autofocus: !hasEmailFromLink.value, maxlength: 254, autocomplete: 'email', defaultValue: typeof route.query.email === 'string' ? route.query.email : '' },
-  ...(hasTokenFromLink.value ? [] : [{ name: 'token', type: 'text' as const, label: 'Reset token', description: 'Paste the token from your email.', placeholder: 'Paste the token from your email', required: true, maxlength: 512, autocomplete: 'one-time-code', defaultValue: typeof route.query.token === 'string' ? route.query.token : '' }]),
-  { name: 'password', type: 'password' as const, label: 'New password', description: 'Use at least 12 characters.', autofocus: hasEmailFromLink.value && hasTokenFromLink.value, placeholder: 'At least 12 characters', required: true, autocomplete: 'new-password' },
-  { name: 'passwordConfirmation', type: 'password' as const, label: 'Confirm password', placeholder: 'Repeat your password', required: true, autocomplete: 'new-password' }
+  { name: 'email', type: 'email' as const, label: 'Email', placeholder: 'you@example.com', required: true, readonly: hasEmailFromLink.value, autofocus: !hasEmailFromLink.value, maxlength: 254, autocomplete: 'email', defaultValue: typeof route.query.email === 'string' ? route.query.email : '', disabled: demoOnly.value },
+  ...(hasTokenFromLink.value ? [] : [{ name: 'token', type: 'text' as const, label: 'Reset token', description: 'Paste the token from your email.', placeholder: 'Paste the token from your email', required: true, maxlength: 512, autocomplete: 'one-time-code', defaultValue: typeof route.query.token === 'string' ? route.query.token : '', disabled: demoOnly.value }]),
+  { name: 'password', type: 'password' as const, label: 'New password', description: 'Use at least 12 characters.', autofocus: hasEmailFromLink.value && hasTokenFromLink.value, placeholder: 'At least 12 characters', required: true, autocomplete: 'new-password', disabled: demoOnly.value },
+  { name: 'passwordConfirmation', type: 'password' as const, label: 'Confirm password', placeholder: 'Repeat your password', required: true, autocomplete: 'new-password', disabled: demoOnly.value }
 ])
 const pending = ref(false)
 const successMessage = ref('')
@@ -72,7 +73,7 @@ const errorMessage = ref('')
 const applicationUrl = ref('')
 
 async function submit({ data }: FormSubmitEvent<ResetPasswordSchema>) {
-  if (pending.value || successMessage.value) return
+  if (pending.value || successMessage.value || demoOnly.value) return
   pending.value = true
   errorMessage.value = ''
 
@@ -137,14 +138,14 @@ async function submit({ data }: FormSubmitEvent<ResetPasswordSchema>) {
       :schema="schema"
       :validate-on="['input']"
       title="Choose a new password"
-      description="Set a new password to secure your account."
-      :submit="{ label: 'Reset password', loading: pending }"
+      :description="demoOnly ? 'Password reset is disabled for this application. Use demo sign-in to continue.' : 'Set a new password to secure your account.'"
+      :submit="{ label: 'Reset password', loading: pending, disabled: demoOnly }"
       @submit="submit"
     >
       <template #header>
         <IdentityAuthFormHeader
           title="Choose a new password"
-          description="Set a new password to secure your account."
+          :description="demoOnly ? 'Password reset is disabled for this application. Use demo sign-in to continue.' : 'Set a new password to secure your account.'"
         />
       </template>
       <template #validation>

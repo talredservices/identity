@@ -60,6 +60,10 @@ final class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(5)->by(self::hostedThrottleKey($request, 'password-recovery:application', $request->ip() ?? 'unknown'));
         });
 
+        RateLimiter::for('identity-sandbox-session', static function (Request $request): Limit {
+            return Limit::perMinute(20)->by('identity-sandbox-session:'.hash('sha256', $request->ip() ?? 'unknown'));
+        });
+
         RateLimiter::for('identity-authorization-intent', static function (Request $request): array {
             return self::identityIntentLimits($request, 'authorization');
         });

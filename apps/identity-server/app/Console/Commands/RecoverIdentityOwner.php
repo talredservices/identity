@@ -21,7 +21,7 @@ final class RecoverIdentityOwner extends Command
 
     public function handle(IdentityAuditRecorder $audit): int
     {
-        $configuredKey = (string) (env('IDENTITY_RECOVERY_KEY') ?: '');
+        $configuredKey = (string) (config('zolta.identity.recovery_key') ?: '');
         $providedKey = (string) $this->secret('Recovery key');
         if ($configuredKey === '' || $providedKey === '' || ! hash_equals($configuredKey, $providedKey)) {
             $this->error('Recovery authorization failed.');

@@ -37,7 +37,7 @@ final class IdentityHostedAuthenticationOperationRequest extends IdentityOperati
                 'access_token' => ['required', 'string', 'max:4096'],
                 'terms_accepted' => ['sometimes', 'boolean'],
             ],
-            'auth.sandbox-session' => [],
+            'auth.sandbox-session' => ['terms_accepted' => ['sometimes', 'boolean']],
             'auth.refresh' => ['refresh_token' => ['required', 'string', 'min:64']],
             'auth.password.forgot' => ['email' => ['required', 'email']],
             'auth.password.reset' => [
@@ -65,6 +65,17 @@ final class IdentityHostedAuthenticationOperationRequest extends IdentityOperati
             $sandbox,
         ) ?? throw new IdentityResourceNotFoundException('Identity hosted application');
 
+        if (($context->authentication['demo_only'] ?? false)
+            && in_array($this->operation(), [
+                'auth.login',
+                'auth.register',
+                'auth.social',
+                'auth.password.forgot',
+                'auth.password.reset',
+            ], true)) {
+            abort(403, 'Primary authentication is disabled for this application while demo-only sign-in is active.');
+        }
+
         $input = $this->validated() + [
             'client_id' => $context->clientId,
             'client_secret' => '',
@@ -72,16 +83,36 @@ final class IdentityHostedAuthenticationOperationRequest extends IdentityOperati
         if (in_array($this->operation(), ['auth.authorization.intent.consume', 'auth.account.intent.create', 'auth.account.intent.consume', 'auth.logout.intent.consume'], true)) {
             $input['hosted_application_id'] = $context->applicationId;
         }
-        if (in_array($this->operation(), ['auth.register', 'auth.social'], true)) {
+        if (in_array($this->operation(), ['auth.register', 'auth.social', 'auth.sandbox-session'], true)) {
             $authentication = $context->authentication;
+            $termsRequired = (bool) ($authentication['terms_required'] ?? false);
+            if ($termsRequired && $context->policyRevision === null) {
+                abort(422, 'The current application policy revision is unavailable.');
+            }
             if ($this->operation() === 'auth.register'
-                && ($authentication['terms_required'] ?? false)
+                && $termsRequired
                 && ! ($input['terms_accepted'] ?? false)) {
                 abort(422, 'You must accept the terms of service to create an account.');
+            }
+            if ($this->operation() === 'auth.sandbox-session' && $termsRequired) {
+                if (! ($input['terms_accepted'] ?? false)) {
+                    abort(422, 'You must accept the terms of service to create a demo account.');
+                }
+                $input['hosted_application_consent'] = [
+                    'hosted_application_id' => $context->applicationId,
+                    'terms_url' => $authentication['terms_url'] ?? null,
+                    'privacy_url' => $authentication['privacy_url'] ?? null,
+                    'policy_revision' => $context->policyRevision,
+                ];
             }
             $input['hosted_application_id'] = $context->applicationId;
             $input['terms_required'] = (bool) ($authentication['terms_required'] ?? false);
             $input['terms_url'] = $authentication['terms_url'] ?? null;
+            $input['privacy_url'] = $authentication['privacy_url'] ?? null;
+            $input['policy_revision'] = $context->policyRevision;
+            if ($this->operation() === 'auth.register') {
+                $input['application_key'] = $context->applicationKey;
+            }
         }
         if ($this->operation() === 'auth.handoff.create') {
             $input['redirect_uri'] = $context->callbackUrl;
