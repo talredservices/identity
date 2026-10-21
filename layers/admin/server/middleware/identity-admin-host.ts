@@ -31,8 +31,8 @@ export default defineEventHandler((event) => {
   const adminHost = normalizeHost(config.admin.host)
 
   // Host separation is opt-in so local development and single-host installs
-  // retain their existing behavior until both production hosts are configured.
-  if (!publicHost || !adminHost) return
+  // retain their existing behavior until two distinct production hosts are configured.
+  if (!publicHost || !adminHost || publicHost === adminHost) return
 
   if (host === publicHost && (isAdminPage(request.pathname) || isAdminBffRequest(request.pathname))) {
     throw createError({ statusCode: 404, statusMessage: 'Not Found' })

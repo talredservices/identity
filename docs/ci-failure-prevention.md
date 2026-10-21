@@ -65,3 +65,11 @@ until PECL publishes complete metadata for 6.3.0 or a later release. The
 upstream issue is tracked at
 [phpredis/phpredis#2870](https://github.com/phpredis/phpredis/issues/2870);
 the pinned release remains published on [PECL](https://pecl.php.net/package/redis/6.2.0).
+
+## Identity console and auth on one hostname
+
+The isolated Starter Identity staging deployment intentionally uses one
+hostname for both the admin console and hosted authentication pages. Treat
+host separation as enabled only when the normalized public and admin hosts are
+both configured and distinct. Equal host values must keep both route families
+available; otherwise the host middleware returns 404 for both.
