@@ -80,11 +80,12 @@ const hostedApplication = reactive<{
   callbackUrl: string
   policyRevision: string
   googleEnabled: boolean
+  demoOnly: boolean
   termsRequired: boolean
   termsUrl: string
   privacyUrl: string
   status: 'active' | 'disabled'
-}>({ id: null, name: '', key: '', primaryClientId: '', sandboxClientId: '', applicationUrl: '', callbackUrl: '', policyRevision: '', googleEnabled: false, termsRequired: false, termsUrl: '', privacyUrl: '', status: 'active' })
+}>({ id: null, name: '', key: '', primaryClientId: '', sandboxClientId: '', applicationUrl: '', callbackUrl: '', policyRevision: '', googleEnabled: false, demoOnly: false, termsRequired: false, termsUrl: '', privacyUrl: '', status: 'active' })
 const role = reactive({ name: '', slug: '', description: '' })
 const permissionForm = reactive({ key: '', name: '', description: '' })
 const invitation = reactive({ email: '', hosted_application_id: '', is_admin: false })
@@ -369,14 +370,19 @@ function openHostedApplication(application?: IdentityHostedApplication) {
         callbackUrl: application.callback_url,
         policyRevision: application.policy_revision ?? '',
         googleEnabled: application.authentication.google_enabled,
+        demoOnly: application.authentication.demo_only ?? false,
         termsRequired: application.authentication.terms_required,
         termsUrl: application.authentication.terms_url ?? '',
         privacyUrl: application.authentication.privacy_url ?? '',
         status: application.status
       }
-    : { id: null, name: '', key: '', primaryClientId: '', sandboxClientId: '', applicationUrl: '', callbackUrl: '', policyRevision: '', googleEnabled: false, termsRequired: false, termsUrl: '', privacyUrl: '', status: 'active' })
+    : { id: null, name: '', key: '', primaryClientId: '', sandboxClientId: '', applicationUrl: '', callbackUrl: '', policyRevision: '', googleEnabled: false, demoOnly: false, termsRequired: false, termsUrl: '', privacyUrl: '', status: 'active' })
   hostedApplicationModalOpen.value = true
 }
+
+watch(() => hostedApplication.sandboxClientId, (sandboxClientId) => {
+  if (!sandboxClientId) hostedApplication.demoOnly = false
+})
 
 function hostedApplicationConfigPath(applicationId: string, section: string = 'general') {
   return localePath(`/admin/application-config/${projectId.value}/${applicationId}/${section}`)
@@ -389,6 +395,7 @@ function applicationConfigPath(application: IdentityHostedApplication) {
 function hostedApplicationAuthentication() {
   return {
     google_enabled: hostedApplication.googleEnabled,
+    demo_only: hostedApplication.demoOnly && Boolean(hostedApplication.sandboxClientId),
     terms_required: hostedApplication.termsRequired,
     terms_url: hostedApplication.termsRequired ? hostedApplication.termsUrl.trim() || null : null,
     privacy_url: hostedApplication.privacyUrl.trim() || null
@@ -1984,6 +1991,12 @@ function selectMembership(membership: IdentityMembership) {
                     v-model="hostedApplication.termsRequired"
                     label="Require acceptance of terms when creating an account"
                     description="Identity records acceptance of the registered policy revision."
+                  />
+                  <UCheckbox
+                    v-model="hostedApplication.demoOnly"
+                    :disabled="!hostedApplication.sandboxClientId"
+                    label="Demo sign-in only"
+                    description="Requires a linked sandbox client. Disables primary sign-in, account creation, and password recovery for this application."
                   />
                   <UFormField
                     label="Approved policy revision"

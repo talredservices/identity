@@ -52,7 +52,7 @@ final class IdentityAuthenticationController extends Controller
     #[Service(ExecuteIdentityAuthenticationService::class, 'Registration successful.', 201)]
     public function register(): void {}
 
-    #[Route('v1/identity/auth/sandbox-session', methods: ['POST'], middleware: ['api', 'throttle:20,1'], name: 'identity.auth.sandbox-session')]
+    #[Route('v1/identity/auth/sandbox-session', methods: ['POST'], middleware: ['api', 'throttle:identity-sandbox-session'], name: 'identity.auth.sandbox-session')]
     #[RequestAttribute(IdentityAuthenticationOperationRequest::class, IdentityOperationDTO::class)]
     #[Service(ExecuteIdentityAuthenticationService::class, 'Sandbox session created.', 201)]
     public function sandboxSession(): void {}

@@ -35,6 +35,7 @@ export type HostedApplicationPublicMetadata = IdentityHostedApplicationMetadata
 
 type HostedApplicationAuthentication = {
   googleEnabled: boolean
+  demoOnly: boolean
   termsRequired: boolean
   termsUrl: string | null
   privacyUrl: string | null
@@ -60,6 +61,7 @@ type HostedSocialFlow = {
   application: string
   providerState: string
   purpose: 'authentication' | 'account'
+  termsAccepted?: boolean
   state?: string
   tab?: 'profile' | 'security'
 }
@@ -109,6 +111,8 @@ type HostedApplicationConfiguration = {
   callback_url: string
   auth_page_set?: string | null
   appearance?: {
+    brand_name?: string | null
+    brand_badge?: string | null
     welcome_text?: string | null
     accent_color?: string | null
     background_preset?: IdentityHostedApplicationMetadata['presentation']['backgroundPreset']
@@ -117,6 +121,7 @@ type HostedApplicationConfiguration = {
   }
   authentication?: {
     google_enabled?: boolean
+    demo_only?: boolean
     terms_required?: boolean
     terms_url?: string | null
     privacy_url?: string | null
@@ -137,6 +142,15 @@ function assertConnection(connection: HostedConnection | undefined): HostedConne
   }
 
   return connection
+}
+
+function assertHostedPrimaryAuthenticationAllowed(application: HostedApplication): void {
+  if (application.authentication.demoOnly) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Primary authentication is disabled for this application while demo-only sign-in is active.'
+    })
+  }
 }
 
 async function resolveHostedApplication(
@@ -171,6 +185,8 @@ async function resolveHostedApplication(
     presentation: {
       pageSet: identityHostedPageSet(application.auth_page_set, config.identityHostedAuthPageSets),
       productName: application.name,
+      brandName: appearance?.brand_name ?? null,
+      brandBadge: appearance?.brand_badge ?? null,
       welcomeText: appearance?.welcome_text ?? null,
       accentColor: appearance?.accent_color ?? null,
       backgroundPreset: appearance?.background_preset ?? 'identity',
@@ -179,6 +195,7 @@ async function resolveHostedApplication(
     },
     authentication: {
       googleEnabled: application.authentication?.google_enabled ?? false,
+      demoOnly: application.authentication?.demo_only ?? false,
       termsRequired: application.authentication?.terms_required ?? false,
       termsUrl: application.authentication?.terms_url ?? null,
       privacyUrl: application.authentication?.privacy_url ?? null
@@ -813,6 +830,7 @@ export async function identityHostedLogin(
   input: IdentityLoginInput
 ) {
   const application = await identityHostedApplication(event, applicationKey)
+  assertHostedPrimaryAuthenticationAllowed(application)
   const identity = await hostedRequest<IdentityLoginData>(event, application, '/login', input)
 
   if (requiresEmailVerification(identity)) {
@@ -832,15 +850,21 @@ export async function identityHostedLogin(
 export async function identityHostedSandbox(
   event: H3Event,
   applicationKey: string,
-  state: string
+  state: string,
+  termsAccepted = false
 ) {
   const application = await identityHostedApplication(event, applicationKey)
   const authorization = await requireHostedAuthorization(event, application, state)
   if (!authorization.features.demoAccount) {
     throw createError({ statusCode: 403, statusMessage: 'Demo sandbox accounts are disabled for this application.' })
   }
+  if (application.authentication.termsRequired && !termsAccepted) {
+    throw createError({ statusCode: 422, statusMessage: 'Accept the current application policies before creating a demo account.' })
+  }
   assertConnection(application.sandbox)
-  const identity = await hostedRequest<IdentityLoginData>(event, application, '/sandbox-session')
+  const identity = await hostedRequest<IdentityLoginData>(event, application, '/sandbox-session', {
+    terms_accepted: termsAccepted
+  })
 
   return await handoff(event, application, identity, state)
 }
@@ -852,6 +876,10 @@ export async function identityHostedRegister(
   input: IdentityRegisterInput
 ) {
   const application = await identityHostedApplication(event, applicationKey)
+  assertHostedPrimaryAuthenticationAllowed(application)
+  if (application.authentication.termsRequired && input.termsAccepted !== true) {
+    throw createError({ statusCode: 422, statusMessage: 'Accept the current application policies before creating an account.' })
+  }
   const identity = await hostedRequest<IdentityLoginData>(event, application, '/register', {
     username: input.username,
     email: input.email,
@@ -873,10 +901,12 @@ export async function identityHostedRegister(
 export async function identityHostedGoogleStart(
   event: H3Event,
   applicationKey: string,
-  state: string
+  state: string,
+  termsAccepted = false
 ) {
   const application = await identityHostedApplication(event, applicationKey)
   const hostedEntry = await requireHostedAuthorization(event, application, state)
+  assertHostedPrimaryAuthenticationAllowed(application)
   const google = useRuntimeConfig(event).identityGoogle
   if (hostedEntry.features.demoAccount && application.sandbox) {
     throw createError({ statusCode: 403, statusMessage: 'Google sign-in is disabled while the demo sandbox is enabled.' })
@@ -884,9 +914,18 @@ export async function identityHostedGoogleStart(
   if (!application.authentication.googleEnabled || !google?.clientId || !google?.clientSecret) {
     throw createError({ statusCode: 404, statusMessage: 'Google sign-in is not available for this application.' })
   }
+  if (application.authentication.termsRequired && !termsAccepted) {
+    throw createError({ statusCode: 422, statusMessage: 'Accept the current application policies before continuing with Google.' })
+  }
   const providerState = crypto.randomUUID().replaceAll('-', '')
   const session = await socialFlowSession(event)
-  await session.update({ application: applicationKey, state: assertState(state), providerState, purpose: 'authentication' })
+  await session.update({
+    application: applicationKey,
+    state: assertState(state),
+    providerState,
+    purpose: 'authentication',
+    termsAccepted
+  })
   const redirectUri = new URL('/api/hosted-auth/google/callback', getRequestURL(event).origin).toString()
   const authorization = new URL('https://accounts.google.com/o/oauth2/v2/auth')
   authorization.searchParams.set('client_id', google.clientId)
@@ -936,6 +975,9 @@ export async function identityHostedGoogleCallback(event: H3Event, code: string,
     throw createError({ statusCode: 401, statusMessage: 'The Google sign-in request has expired. Please try again.' })
   }
   const application = await identityHostedApplication(event, flow.application)
+  if (flow.purpose === 'authentication') {
+    assertHostedPrimaryAuthenticationAllowed(application)
+  }
   const google = useRuntimeConfig(event).identityGoogle
   const redirectUri = new URL('/api/hosted-auth/google/callback', getRequestURL(event).origin).toString()
   const response = await $fetch<{ access_token?: string }>('https://oauth2.googleapis.com/token', {
@@ -952,7 +994,7 @@ export async function identityHostedGoogleCallback(event: H3Event, code: string,
   const identity = await hostedRequest<IdentityLoginData>(event, application, '/social', {
     provider: 'google',
     access_token: response.access_token,
-    terms_accepted: true
+    terms_accepted: flow.purpose === 'authentication' && flow.termsAccepted === true
   })
   if (flow.purpose === 'account') {
     const account = await accountSession(event, flow.application)
@@ -1035,6 +1077,7 @@ export async function identityHostedForgotPassword(
   email: string
 ) {
   const application = await identityHostedApplication(event, applicationKey)
+  assertHostedPrimaryAuthenticationAllowed(application)
   try {
     return await hostedRequest<Record<string, unknown>>(event, application, '/password/forgot', { email })
   } catch (error) {
@@ -1066,6 +1109,7 @@ export async function identityHostedResetPassword(
   }
 
   const application = await identityHostedApplicationByClient(event, clientId)
+  assertHostedPrimaryAuthenticationAllowed(application)
   const result = await hostedRequest<Record<string, unknown>>(event, application, '/password/reset', {
     email: input.email,
     token: input.token,

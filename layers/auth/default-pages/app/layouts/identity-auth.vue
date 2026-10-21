@@ -1,5 +1,7 @@
 <script setup lang="ts">
 type HostedAppearance = {
+  brandName: string | null
+  brandBadge: string | null
   welcomeText: string | null
   accentColor: string | null
   backgroundPreset: 'identity' | 'slate' | 'indigo' | 'emerald' | 'sunset'
@@ -47,6 +49,20 @@ const config = useRuntimeConfig()
 const productName = computed(
   () => brand.value?.presentation.productName ?? brand.value?.name ?? brand.value?.projectName ?? config.public.identityAuth.productName
 )
+const brandName = computed(() => brand.value?.presentation.brandName ?? productName.value)
+const brandBadge = computed(() => brand.value?.presentation.brandBadge ?? null)
+const brandNameLines = computed(() => {
+  const [first = '', ...remaining] = brandName.value.trim().split(/\s+/)
+  const second = remaining.join(' ')
+  const domainMatch = second.match(/(\.com)$/i)
+
+  return {
+    first,
+    second,
+    secondPrefix: domainMatch ? second.slice(0, -domainMatch[0].length).trimEnd() : second,
+    domainSuffix: domainMatch?.[0] ?? ''
+  }
+})
 const pageSet = computed(() => identityAuthPageSet(brand.value?.presentation.pageSet))
 const backgroundPreset = computed(
   () => brand.value?.presentation.backgroundPreset ?? 'identity'
@@ -81,9 +97,9 @@ const brandStyle = computed(() => {
 })
 
 useHead(() => ({
-  title: productName.value,
+  title: brandBadge.value ? `${brandName.value} · ${brandBadge.value}` : brandName.value,
   meta: [
-    { name: 'description', content: `Secure authentication for ${productName.value}.` }
+    { name: 'description', content: `Secure authentication for ${brandBadge.value ?? productName.value}.` }
   ]
 }))
 
@@ -104,16 +120,43 @@ provide('identity-auth-page-set', pageSet)
       class="identity-auth-header"
     >
       <div class="identity-auth-header-inner">
-        <div
+        <component
+          :is="brand?.returnUrl ? 'a' : 'div'"
+          :href="brand?.returnUrl"
+          :aria-label="brand?.returnUrl ? `Go to ${productName}` : undefined"
           class="identity-auth-header-brand"
+          :class="brand?.returnUrl && 'identity-auth-header-brand-link'"
         >
           <IdentityAuthBrandMark
             :logo-url="brand?.presentation.logoUrl"
             :accent-color="brand?.presentation.accentColor"
             size="header"
           />
-          <span class="identity-auth-header-name">{{ productName }}</span>
-        </div>
+          <span
+            class="identity-auth-header-name"
+            :aria-label="brandName"
+          >
+            <span class="identity-auth-header-name-line">{{ brandNameLines.first }}</span>
+            <span
+              v-if="brandNameLines.second"
+              class="identity-auth-header-name-line identity-auth-header-name-subline"
+            >
+              <span>{{ brandNameLines.secondPrefix }}</span>
+              <span
+                v-if="brandNameLines.domainSuffix"
+                class="identity-auth-header-domain-suffix"
+              >
+                {{ brandNameLines.domainSuffix }}
+              </span>
+            </span>
+          </span>
+          <span
+            v-if="brandBadge"
+            class="identity-auth-header-badge"
+          >
+            {{ brandBadge }}
+          </span>
+        </component>
         <div class="identity-auth-header-controls">
           <IdentityConsoleControls compact />
         </div>
@@ -240,12 +283,55 @@ body {
   min-width: 0;
 }
 
+.identity-auth-header-brand-link {
+  border-radius: var(--ui-radius);
+  color: inherit;
+  text-decoration: none;
+}
+
+.identity-auth-header-brand-link:focus-visible {
+  outline: 2px solid var(--ui-primary);
+  outline-offset: 4px;
+}
+
 .identity-auth-header-name {
   color: var(--identity-auth-text);
-  font-size: 1rem;
+  display: flex;
+  flex-direction: column;
   font-weight: 650;
   overflow: hidden;
+  line-height: 1;
+  min-width: 0;
+}
+
+.identity-auth-header-name-line {
+  overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identity-auth-header-name-subline {
+  color: var(--identity-auth-text);
+  font-size: 0.625rem;
+  font-weight: 500;
+  line-height: 1.2;
+  margin-inline-start: 1rem;
+}
+
+.identity-auth-header-domain-suffix {
+  color: var(--ui-primary);
+}
+
+.identity-auth-header-badge {
+  background: color-mix(in srgb, var(--ui-primary) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-primary) 25%, transparent);
+  border-radius: 9999px;
+  color: var(--ui-primary);
+  flex: none;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.25;
+  padding: 0.2rem 0.55rem;
   white-space: nowrap;
 }
 

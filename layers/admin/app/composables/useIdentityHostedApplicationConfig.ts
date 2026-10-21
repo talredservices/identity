@@ -20,6 +20,7 @@ export type HostedApplicationConfigForm = {
   callbackUrl: string
   policyRevision: string
   googleEnabled: boolean
+  demoOnly: boolean
   termsRequired: boolean
   termsUrl: string
   privacyUrl: string
@@ -49,6 +50,7 @@ export function createHostedApplicationConfigForm(): HostedApplicationConfigForm
     callbackUrl: '',
     policyRevision: '',
     googleEnabled: false,
+    demoOnly: false,
     termsRequired: false,
     termsUrl: '',
     privacyUrl: '',
@@ -66,6 +68,7 @@ function formFromApplication(application: IdentityHostedApplication): HostedAppl
     callbackUrl: application.callback_url,
     policyRevision: application.policy_revision ?? '',
     googleEnabled: application.authentication.google_enabled,
+    demoOnly: application.authentication.demo_only ?? false,
     termsRequired: application.authentication.terms_required,
     termsUrl: application.authentication.terms_url ?? '',
     privacyUrl: application.authentication.privacy_url ?? '',
@@ -94,6 +97,10 @@ export async function useIdentityHostedApplicationConfig(
     if (currentApplication) Object.assign(form, formFromApplication(currentApplication))
   }, { immediate: true })
 
+  watch(() => form.sandboxClientId, (sandboxClientId) => {
+    if (!sandboxClientId) form.demoOnly = false
+  })
+
   async function save() {
     const currentApplication = application.value
     if (!currentApplication) return
@@ -109,6 +116,7 @@ export async function useIdentityHostedApplicationConfig(
       status: form.status,
       authentication: {
         google_enabled: form.googleEnabled,
+        demo_only: form.demoOnly && Boolean(form.sandboxClientId),
         terms_required: form.termsRequired,
         terms_url: form.termsRequired ? form.termsUrl.trim() || null : null,
         privacy_url: form.privacyUrl.trim() || null

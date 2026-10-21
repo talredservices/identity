@@ -38,6 +38,7 @@ final readonly class ExecuteIdentityAccessCommandHandler
                 (string) $command->input['client_secret'],
                 $command->ipAddress,
                 $command->userAgent,
+                $command->input['hosted_application_consent'] ?? null,
             ),
         };
 

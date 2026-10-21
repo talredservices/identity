@@ -3,6 +3,7 @@ import { z } from 'zod/v4'
 
 const authenticationSchema = z.object({
   google_enabled: z.boolean(),
+  demo_only: z.boolean(),
   terms_required: z.boolean(),
   terms_url: z.url().max(2048).nullable(),
   privacy_url: z.url().max(2048).nullable()
@@ -21,6 +22,9 @@ const schema = z.object({
 }).refine(body => !body.authentication.terms_required || body.authentication.terms_url !== null, {
   message: 'A Terms of Service URL is required when terms acceptance is enabled.',
   path: ['authentication', 'terms_url']
+}).refine(body => !body.authentication.demo_only || body.sandbox_client_id !== null, {
+  message: 'A sandbox client is required when demo-only sign-in is enabled.',
+  path: ['sandbox_client_id']
 })
 
 export default defineEventHandler(async (event) => {

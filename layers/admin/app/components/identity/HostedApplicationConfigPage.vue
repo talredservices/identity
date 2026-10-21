@@ -398,6 +398,14 @@ async function submit() {
                   />
                 </div>
               </div>
+              <div class="rounded-lg border border-default bg-default/40 p-4">
+                <UCheckbox
+                  v-model="form.demoOnly"
+                  :disabled="!form.sandboxClientId"
+                  label="Demo sign-in only"
+                  description="Requires a linked sandbox client. Disables primary sign-in, account creation, and password recovery for this application."
+                />
+              </div>
               <div class="grid gap-4 lg:grid-cols-3">
                 <UFormField
                   label="Approved policy revision"

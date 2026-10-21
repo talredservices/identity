@@ -37,15 +37,20 @@ const registration = reactive<ProfileStep & PasswordStep>({
 })
 const consentOpen = ref(false)
 const consentAccepted = ref(false)
-const { data: experience } = await useFetch<IdentityAuthenticationExperience & { application?: { authentication?: { termsRequired?: boolean, termsUrl?: string | null, privacyUrl?: string | null } } }>(
+const consentAction = ref<'register' | 'google'>('register')
+const { data: experience } = await useFetch<IdentityAuthenticationExperience & { application?: { authentication?: { demoOnly?: boolean, termsRequired?: boolean, termsUrl?: string | null, privacyUrl?: string | null } } }>(
   () => hosted.value ? '/api/hosted-auth/context' : '',
-  { query: computed(() => hosted.value ? { application: hostedApplication.value } : {}), immediate: hosted }
+  { query: computed(() => hosted.value ? { application: hostedApplication.value } : {}), immediate: hosted.value }
 )
 const hostedAuthentication = computed(() => experience.value?.application?.authentication)
-const consentLabel = computed(() => hostedAuthentication.value?.privacyUrl
-  ? 'I have read and agree to the Terms of Service and Privacy Policy.'
-  : 'I have read and agree to the Terms of Service.')
+const demoOnly = computed(() => hosted.value && hostedAuthentication.value?.demoOnly === true)
 const termsRequired = computed(() => hostedAuthentication.value?.termsRequired ?? false)
+const consentDescription = computed(() => consentAction.value === 'google'
+  ? 'Accept the application policies before continuing with Google.'
+  : 'Confirm the legal terms before creating your account.')
+const consentConfirmLabel = computed(() => consentAction.value === 'google'
+  ? 'Accept and continue with Google'
+  : 'Accept and create account')
 const googleEnabled = computed(() => hosted.value && hostedAuthentication.value?.googleEnabled === true)
 const googlePending = ref(false)
 const profileSchema = z.object({
@@ -60,24 +65,25 @@ const passwordSchema = z.object({
   path: ['passwordConfirmation']
 })
 const profileFields = computed(() => [
-  { name: 'username', type: 'text' as const, label: 'Name', placeholder: 'Your name', required: true, autocomplete: 'name', defaultValue: registration.username },
-  { name: 'email', type: 'email' as const, label: 'Email', placeholder: 'you@example.com', required: true, autocomplete: 'email', defaultValue: registration.email }
+  { name: 'username', type: 'text' as const, label: 'Name', placeholder: 'Your name', required: true, autocomplete: 'name', defaultValue: registration.username, disabled: demoOnly.value },
+  { name: 'email', type: 'email' as const, label: 'Email', placeholder: 'you@example.com', required: true, autocomplete: 'email', defaultValue: registration.email, disabled: demoOnly.value }
 ])
 const passwordFields = computed(() => [
-  { name: 'password', type: 'password' as const, label: 'Password', placeholder: 'At least 12 characters', required: true, autocomplete: 'new-password', defaultValue: registration.password },
-  { name: 'passwordConfirmation', type: 'password' as const, label: 'Confirm password', placeholder: 'Repeat your password', required: true, autocomplete: 'new-password', defaultValue: registration.passwordConfirmation }
+  { name: 'password', type: 'password' as const, label: 'Password', placeholder: 'At least 12 characters', required: true, autocomplete: 'new-password', defaultValue: registration.password, disabled: demoOnly.value },
+  { name: 'passwordConfirmation', type: 'password' as const, label: 'Confirm password', placeholder: 'Repeat your password', required: true, autocomplete: 'new-password', defaultValue: registration.passwordConfirmation, disabled: demoOnly.value }
 ])
 const providers = computed(() => googleEnabled.value
   ? [{
       label: 'Continue with Google',
       icon: 'i-simple-icons-google',
       loading: googlePending.value,
-      disabled: Boolean(experience.value?.sandbox),
-      onClick: continueWithGoogle
+      disabled: demoOnly.value || Boolean(experience.value?.sandbox),
+      onClick: requestGoogleSignIn
     }]
   : [])
 
 function continueToPassword({ data }: FormSubmitEvent<ProfileStep>) {
+  if (demoOnly.value) return
   registration.username = data.username
   registration.email = data.email
   step.value = 'password'
@@ -88,9 +94,11 @@ function returnToProfile() {
 }
 
 async function requestAccountCreation({ data }: FormSubmitEvent<PasswordStep>) {
+  if (demoOnly.value) return
   registration.password = data.password
   registration.passwordConfirmation = data.passwordConfirmation
   if (termsRequired.value) {
+    consentAction.value = 'register'
     consentAccepted.value = false
     consentOpen.value = true
     return
@@ -102,10 +110,16 @@ async function requestAccountCreation({ data }: FormSubmitEvent<PasswordStep>) {
 async function acceptConsent() {
   if (!consentAccepted.value) return
   consentOpen.value = false
+  if (consentAction.value === 'google') {
+    await continueWithGoogle(true)
+    return
+  }
+
   await createAccount(true)
 }
 
 async function createAccount(termsAccepted: boolean) {
+  if (demoOnly.value) return
   pending.value = true
 
   try {
@@ -145,13 +159,24 @@ async function createAccount(termsAccepted: boolean) {
   }
 }
 
-async function continueWithGoogle() {
-  if (!hosted.value) return
+function requestGoogleSignIn() {
+  if (termsRequired.value) {
+    consentAction.value = 'google'
+    consentAccepted.value = false
+    consentOpen.value = true
+    return
+  }
+
+  void continueWithGoogle(false)
+}
+
+async function continueWithGoogle(termsAccepted: boolean) {
+  if (!hosted.value || demoOnly.value) return
   googlePending.value = true
   try {
     const result = await mutateIdentity<{ redirectUrl: string }>('/api/hosted-auth/google', {
       method: 'POST',
-      body: { application: hostedApplication.value, state: hostedState.value }
+      body: { application: hostedApplication.value, state: hostedState.value, termsAccepted }
     })
     await navigateTo(result.redirectUrl, { external: true })
   } catch (error) {
@@ -182,7 +207,7 @@ async function continueWithGoogle() {
         :providers="providers"
         title="Create account"
         description="Create an account for this application."
-        :submit="{ label: 'Continue' }"
+        :submit="{ label: 'Continue', disabled: demoOnly }"
         @submit="continueToPassword"
       >
         <template #header>
@@ -208,7 +233,7 @@ async function continueWithGoogle() {
         :validate-on="['input']"
         title="Secure your account"
         description="Choose a password to finish creating your account."
-        :submit="{ label: 'Create account', loading: pending }"
+        :submit="{ label: 'Create account', loading: pending, disabled: demoOnly }"
         @submit="requestAccountCreation"
       >
         <template #header>
@@ -230,91 +255,15 @@ async function continueWithGoogle() {
       </UAuthForm>
     </Transition>
 
-    <UModal
+    <IdentityHostedPolicyConsentModal
       v-model:open="consentOpen"
-      title="Review and accept"
-      description="Confirm the legal terms before creating your account."
-    >
-      <template #body>
-        <div class="space-y-5 sm:space-y-6">
-          <div class="grid gap-3 sm:grid-cols-2">
-            <a
-              v-if="hostedAuthentication?.termsUrl"
-              :href="hostedAuthentication.termsUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="group flex min-w-0 items-center gap-3 rounded-xl border border-default bg-elevated p-4 transition-colors hover:border-primary"
-            >
-              <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-primary">
-                <UIcon
-                  name="i-lucide-file-text"
-                  class="size-5"
-                  aria-hidden="true"
-                />
-              </span>
-              <span class="min-w-0 flex-1">
-                <span class="block text-sm font-medium text-highlighted">Terms of Service</span>
-                <span class="mt-1 block text-xs text-muted">Open policy</span>
-              </span>
-              <UIcon
-                name="i-lucide-arrow-up-right"
-                class="size-4 shrink-0 text-muted transition-colors group-hover:text-primary"
-                aria-hidden="true"
-              />
-            </a>
-            <a
-              v-if="hostedAuthentication?.privacyUrl"
-              :href="hostedAuthentication.privacyUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="group flex min-w-0 items-center gap-3 rounded-xl border border-default bg-elevated p-4 transition-colors hover:border-primary"
-            >
-              <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-primary">
-                <UIcon
-                  name="i-lucide-lock-keyhole"
-                  class="size-5"
-                  aria-hidden="true"
-                />
-              </span>
-              <span class="min-w-0 flex-1">
-                <span class="block text-sm font-medium text-highlighted">Privacy Policy</span>
-                <span class="mt-1 block text-xs text-muted">Open policy</span>
-              </span>
-              <UIcon
-                name="i-lucide-arrow-up-right"
-                class="size-4 shrink-0 text-muted transition-colors group-hover:text-primary"
-                aria-hidden="true"
-              />
-            </a>
-          </div>
-
-          <div class="rounded-xl border border-default bg-muted p-4 sm:p-5">
-            <UCheckbox
-              v-model="consentAccepted"
-              :label="consentLabel"
-            />
-          </div>
-        </div>
-      </template>
-      <template #footer>
-        <div class="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
-          <UButton
-            label="Cancel"
-            color="neutral"
-            variant="outline"
-            class="w-full justify-center sm:w-auto"
-            @click="consentOpen = false"
-          />
-          <UButton
-            label="Accept and create account"
-            icon="i-lucide-check"
-            :disabled="!consentAccepted"
-            :loading="pending"
-            class="w-full justify-center sm:w-auto"
-            @click="acceptConsent"
-          />
-        </div>
-      </template>
-    </UModal>
+      v-model:accepted="consentAccepted"
+      :terms-url="hostedAuthentication?.termsUrl"
+      :privacy-url="hostedAuthentication?.privacyUrl"
+      :description="consentDescription"
+      :confirm-label="consentConfirmLabel"
+      :loading="pending || googlePending"
+      @confirm="acceptConsent"
+    />
   </div>
 </template>

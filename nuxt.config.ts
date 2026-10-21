@@ -21,6 +21,16 @@ export default defineNuxtConfig({
     './packages/ui'
   ],
   modules: ['@nuxt/eslint', '@vueuse/nuxt'],
+  typescript: {
+    appTsConfig: {
+      compilerOptions: {
+        paths: {
+          '@nuxt/ui': ['../node_modules/@nuxt/ui'],
+          vue: ['../node_modules/vue']
+        }
+      }
+    }
+  },
   icon: {
     clientBundle: {
       icons: ['lucide:languages'],

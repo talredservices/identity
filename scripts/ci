@@ -4,10 +4,19 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
+run_with_stack_paused() {
+  local wrapper="$root/../local-dev-ops/scripts/with-stack-paused"
+  if [[ -x "$wrapper" ]]; then
+    "$wrapper" -- "$@"
+  else
+    "$@"
+  fi
+}
+
 frontend() {
   CI=true pnpm install --frozen-lockfile
-  pnpm lint
-  pnpm build
+  run_with_stack_paused pnpm lint
+  run_with_stack_paused pnpm build
 }
 
 backend() {

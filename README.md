@@ -3,7 +3,7 @@
 [![CI](https://github.com/talredservices/identity/actions/workflows/ci.yml/badge.svg)](https://github.com/talredservices/identity/actions/workflows/ci.yml)
 [![License: Apache--2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Talred services include this open-source, standalone identity provider and administration console, presented as Talred Identity and maintained by [Redouane Taleb](https://github.com/redouaneT). It gives multiple applications a shared account system while keeping each application's business data and preferences independent.
+Talred Identity is an open-source identity provider and administration console that can be run independently. Maintained by [Redouane Taleb](https://github.com/redouaneT), it gives multiple applications a shared account system while keeping each application's business data and preferences independent.
 
 The public brand is Talred, with hosted domain references using `talredservices.com`. The Identity application manifest and Nuxt layer use the `@talred/*` namespace in source.
 

@@ -37,7 +37,7 @@ final class IdentityHostedAuthenticationController extends Controller
     #[Service(ExecuteIdentityAuthenticationService::class, 'Social login successful.')]
     public function social(): void {}
 
-    #[Route('v1/identity/hosted-applications/{application}/auth/sandbox-session', methods: ['POST'], middleware: [...self::MIDDLEWARE, 'throttle:20,1'], name: 'identity.hosted_applications.sandbox-session')]
+    #[Route('v1/identity/hosted-applications/{application}/auth/sandbox-session', methods: ['POST'], middleware: [...self::MIDDLEWARE, 'throttle:identity-sandbox-session'], name: 'identity.hosted_applications.sandbox-session')]
     #[Request(IdentityHostedAuthenticationOperationRequest::class, IdentityOperationDTO::class)]
     #[Service(ExecuteIdentityAuthenticationService::class, 'Sandbox session created.', 201)]
     public function sandboxSession(): void {}

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import * as z from 'zod/v4'
 import type { FormSubmitEvent } from '@nuxt/ui'
+import type { IdentityAuthenticationExperience } from '../../../../shared/types/identity-auth'
 import { useIdentityMutation } from '../../../../app/composables/useIdentityMutation'
 
 definePageMeta({
@@ -13,15 +14,22 @@ const toast = useToast()
 const { forgotPassword } = useIdentityAuth()
 const mutateIdentity = useIdentityMutation()
 const hostedApplication = computed(() => typeof route.query.application === 'string' ? route.query.application : '')
+const hostedState = computed(() => typeof route.query.state === 'string' ? route.query.state : '')
+const hosted = computed(() => Boolean(hostedApplication.value && hostedState.value))
+const { data: experience } = await useFetch<IdentityAuthenticationExperience>(
+  () => hosted.value ? '/api/hosted-auth/context' : '',
+  { query: computed(() => hosted.value ? { application: hostedApplication.value } : {}), immediate: hosted.value }
+)
+const demoOnly = computed(() => hosted.value && experience.value?.application?.authentication.demoOnly === true)
 const schema = z.object({ email: z.email('Enter a valid email address.') })
 type ForgotPasswordSchema = z.output<typeof schema>
-const fields = [{ name: 'email', type: 'email' as const, label: 'Email', placeholder: 'you@example.com', required: true, autocomplete: 'email' }]
+const fields = computed(() => [{ name: 'email', type: 'email' as const, label: 'Email', placeholder: 'you@example.com', required: true, autocomplete: 'email', disabled: demoOnly.value }])
 const pending = ref(false)
 const successMessage = ref('')
 const errorMessage = ref('')
 
 async function submit({ data }: FormSubmitEvent<ForgotPasswordSchema>) {
-  if (pending.value) return
+  if (pending.value || demoOnly.value) return
   pending.value = true
   successMessage.value = ''
   errorMessage.value = ''
@@ -78,7 +86,7 @@ async function submit({ data }: FormSubmitEvent<ForgotPasswordSchema>) {
       :validate-on="['input']"
       title="Reset your password"
       description="Enter your email address and we will send the reset instructions."
-      :submit="{ label: 'Send reset instructions', loading: pending }"
+      :submit="{ label: 'Send reset instructions', loading: pending, disabled: demoOnly }"
       @submit="submit"
     >
       <template #header>
