@@ -1,4 +1,4 @@
-FROM php:8.3-cli-alpine
+FROM php:8.3.36-cli-alpine
 
 RUN apk add --no-cache $PHPIZE_DEPS linux-headers icu-dev libzip-dev oniguruma-dev freetype-dev libjpeg-turbo-dev libpng-dev git \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
