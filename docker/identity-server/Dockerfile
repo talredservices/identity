@@ -1,4 +1,4 @@
-FROM php:8.3-fpm-alpine
+FROM php:8.3.36-fpm-alpine
 
 RUN apk add --no-cache $PHPIZE_DEPS icu-dev libzip-dev oniguruma-dev \
     && docker-php-ext-install bcmath intl mbstring pdo_mysql zip \
