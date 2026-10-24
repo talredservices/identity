@@ -8,6 +8,12 @@ RUN corepack enable
 COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm build
+# Nitro externalizes Zod in server route chunks; include it in the standalone
+# output so the final image can resolve the runtime imports.
+RUN if [ ! -e /app/.output/server/node_modules/zod ]; then \
+      mkdir -p /app/.output/server/node_modules && \
+      cp -aL /app/node_modules/zod /app/.output/server/node_modules/zod; \
+    fi
 
 FROM node:22-alpine
 
