@@ -1,4 +1,14 @@
 <script setup lang="ts">
+import type { ComputedRef } from 'vue'
+import { hostedModalThemeStyle } from '../utils/hosted-modal-theme'
+
+type HostedThemeBrand = {
+  presentation: {
+    accentColor?: string | null
+    designTokens?: Record<string, string>
+  }
+}
+
 const props = defineProps<{
   open: boolean
   accepted: boolean
@@ -15,6 +25,19 @@ const emit = defineEmits<{
   'confirm': []
 }>()
 
+const brand = inject<ComputedRef<HostedThemeBrand | null>>(
+  'identity-auth-brand',
+  computed(() => null)
+)
+const colorMode = useColorMode()
+const modalContent = computed(() => ({
+  disableOutsidePointerEvents: true,
+  style: hostedModalThemeStyle(
+    brand.value?.presentation,
+    colorMode.value === 'dark' ? 'dark' : 'light'
+  )
+}))
+
 const consentLabel = computed(() => props.privacyUrl
   ? 'I have read and agree to the Terms of Service and Privacy Policy.'
   : 'I have read and agree to the Terms of Service.')
@@ -23,6 +46,7 @@ const consentLabel = computed(() => props.privacyUrl
 <template>
   <UModal
     :open="open"
+    :content="modalContent"
     title="Review and accept"
     :description="description"
     @update:open="emit('update:open', $event)"

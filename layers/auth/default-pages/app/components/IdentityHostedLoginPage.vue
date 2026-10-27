@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import type { ComputedRef } from 'vue'
 import * as z from 'zod/v4'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import type { IdentityAuthenticationContext } from '../../../shared/types/identity-auth'
 import { useIdentityMutation } from '../../../app/composables/useIdentityMutation'
 
 const route = useRoute()
+const brand = inject<ComputedRef<{
+  authentication: { termsUrl: string | null, privacyUrl: string | null }
+} | null>>('identity-auth-brand', computed(() => null))
 const config = useRuntimeConfig()
 const toast = useToast()
 const auth = useIdentityAuth()
@@ -34,8 +38,8 @@ const policyConsentAction = ref<'demo' | 'google'>('demo')
 const {
   data: experience,
   error: experienceError,
-  pending: experiencePending
-} = await useFetch(
+  pending: experienceFetchPending
+} = useFetch(
   () => (hosted.value ? '/api/hosted-auth/context' : '/api/auth/context'),
   {
     query: computed(() =>
@@ -44,8 +48,14 @@ const {
             application: hostedApplication.value
           }
         : {}
-    )
+    ),
+    server: false,
+    lazy: true,
+    default: () => null
   }
+)
+const experiencePending = computed(() =>
+  experienceFetchPending.value || (!experience.value && !experienceError.value)
 )
 
 const primary = computed(() => experience.value?.primary ?? null)
@@ -271,6 +281,7 @@ async function continueWithGoogle(termsAccepted: boolean) {
       <IdentityAuthFormHeader
         title="Sign in"
         description="We could not load this application's authentication settings."
+        show-brand
       />
       <p class="identity-auth-error">
         Try refreshing the page or return to the application and start again.
@@ -283,10 +294,14 @@ async function continueWithGoogle(termsAccepted: boolean) {
     >
       <IdentityAuthFormHeader
         title="Sign in"
-        description="Loading authentication settings…"
+        show-brand
       />
-      <div class="identity-auth-status">
-        Loading authentication…
+      <div
+        class="identity-auth-status"
+        role="status"
+        aria-live="polite"
+      >
+        Preparing your sign-in…
       </div>
     </div>
 
@@ -365,6 +380,11 @@ async function continueWithGoogle(termsAccepted: boolean) {
         />
       </div>
     </template>
+
+    <IdentityAttribution
+      :terms-url="brand?.authentication.termsUrl"
+      :privacy-url="brand?.authentication.privacyUrl"
+    />
 
     <IdentityHostedPolicyConsentModal
       v-model:open="policyConsentOpen"

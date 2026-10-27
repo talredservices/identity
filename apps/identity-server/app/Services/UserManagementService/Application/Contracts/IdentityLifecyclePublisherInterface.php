@@ -6,5 +6,8 @@ namespace App\Services\UserManagementService\Application\Contracts;
 
 interface IdentityLifecyclePublisherInterface
 {
-    public function requestUserDeletion(string $userId, string $email): bool;
+    public function requestUserDeletion(
+        string $userId,
+        string $reason = 'account_deletion_requested',
+    ): bool;
 }

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { identityAuthPageSet, identityAuthPageSetFromRoute } from '../utils/identity-auth-page'
+
 type HostedAppearance = {
   brandName: string | null
   brandBadge: string | null
@@ -22,13 +24,19 @@ type HostedBrand = {
 }
 
 const route = useRoute()
+const showInlineAttribution = computed(() =>
+  /^\/auth\/(?:[^/]+\/)?(?:login|logout)$/.test(route.path)
+)
+const isLogoutTransition = computed(() =>
+  /^\/auth\/(?:[^/]+\/)?logout$/.test(route.path)
+)
 const applicationKey = computed(() =>
   typeof route.query.application === 'string' ? route.query.application : ''
 )
 const clientId = computed(() =>
   typeof route.query.client_id === 'string' ? route.query.client_id : ''
 )
-const { data: experience } = await useAsyncData<HostedBrand | null>(
+const { data: experience } = useAsyncData<HostedBrand | null>(
   'identity-auth-brand',
   async () => {
     if (!applicationKey.value && !clientId.value) return null
@@ -42,9 +50,18 @@ const { data: experience } = await useAsyncData<HostedBrand | null>(
     )
     return response.application
   },
-  { watch: [applicationKey, clientId] }
+  {
+    watch: [applicationKey, clientId],
+    // Hosted login and logout transitions must paint the resolved app brand,
+    // including its logo and colors, on their first frame. Other auth screens
+    // keep their existing non-blocking client fetch.
+    server: Boolean(applicationKey.value || clientId.value)
+      && (route.path === '/auth/logout' || route.path.endsWith('/login')),
+    lazy: true,
+    default: () => null
+  }
 )
-const brand = computed(() => experience.value)
+const brand = computed(() => experience.value ?? null)
 const config = useRuntimeConfig()
 const productName = computed(
   () => brand.value?.presentation.productName ?? brand.value?.name ?? brand.value?.projectName ?? config.public.identityAuth.productName
@@ -63,7 +80,13 @@ const brandNameLines = computed(() => {
     domainSuffix: domainMatch?.[0] ?? ''
   }
 })
-const pageSet = computed(() => identityAuthPageSet(brand.value?.presentation.pageSet))
+const routePageSet = computed(() =>
+  identityAuthPageSetFromRoute(route.path, route.params.pageSet)
+)
+const pageSet = computed(() => routePageSet.value !== 'default'
+  ? routePageSet.value
+  : identityAuthPageSet(brand.value?.presentation.pageSet)
+)
 const backgroundPreset = computed(
   () => brand.value?.presentation.backgroundPreset ?? 'identity'
 )
@@ -117,6 +140,7 @@ provide('identity-auth-page-set', pageSet)
     :style="brandStyle"
   >
     <header
+      v-if="pageSet === 'default'"
       class="identity-auth-header"
     >
       <div class="identity-auth-header-inner">
@@ -163,9 +187,16 @@ provide('identity-auth-page-set', pageSet)
       </div>
     </header>
 
-    <div class="identity-auth-content">
+    <div
+      class="identity-auth-content"
+      :class="{
+        'identity-auth-content--hosted-page-set': pageSet !== 'default',
+        'identity-auth-content--logout': isLogoutTransition
+      }"
+    >
       <slot />
       <IdentityAttribution
+        v-if="!showInlineAttribution"
         :terms-url="brand?.authentication.termsUrl"
         :privacy-url="brand?.authentication.privacyUrl"
       />
@@ -364,6 +395,20 @@ body {
   margin-inline: auto;
   padding: 2rem 1rem;
   width: min(100%, 28rem);
+}
+
+.identity-auth-content--hosted-page-set {
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 0;
+  width: 100%;
+}
+
+.identity-auth-content--logout {
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  width: 100%;
 }
 
 .identity-auth-content > * {

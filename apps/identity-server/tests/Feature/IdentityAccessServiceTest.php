@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Services\UserManagementService\Application\Contracts\AccountDataEraserInterface;
 use App\Services\UserManagementService\Application\Contracts\Identity\Authentication\ManageIdentityAccountSecurity;
 use App\Services\UserManagementService\Application\Contracts\Identity\Projects\CreateIdentityProject;
 use App\Services\UserManagementService\Application\Contracts\Identity\Projects\ManageIdentityClients;
@@ -12,6 +13,7 @@ use App\Services\UserManagementService\Application\DTOs\External\OAuthUser;
 use App\Services\UserManagementService\Application\Exceptions\IdentityAuthenticationException;
 use App\Services\UserManagementService\Application\Exceptions\IdentityAuthorizationException;
 use App\Services\UserManagementService\Infrastructure\Jobs\DeliverIdentityWebhook;
+use App\Services\UserManagementService\Infrastructure\Jobs\FinalizeIdentityUserDeletion;
 use App\Services\UserManagementService\Infrastructure\Models\Eloquent\IdentityAccessCatalogPermission;
 use App\Services\UserManagementService\Infrastructure\Models\Eloquent\IdentityAccessCatalogRole;
 use App\Services\UserManagementService\Infrastructure\Models\Eloquent\IdentityAuthorizationIntent;
@@ -28,6 +30,7 @@ use App\Services\UserManagementService\Infrastructure\Models\Eloquent\IdentityWe
 use App\Services\UserManagementService\Infrastructure\Models\Eloquent\IdentityWebhookEndpoint;
 use App\Services\UserManagementService\Infrastructure\Models\Eloquent\User;
 use App\Services\UserManagementService\Infrastructure\Notifications\ResetIdentityPassword;
+use App\Services\UserManagementService\Infrastructure\Services\Identity\IdentityWebhookDestinationValidator;
 use App\Services\UserManagementService\Infrastructure\Webhooks\IdentityWebhookPublisher;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -198,6 +201,108 @@ final class IdentityAccessServiceTest extends TestCase
             'client_secret' => $secret,
             'refresh_token' => $secondSession['refresh_token'],
         ])->assertOk();
+    }
+
+    public function test_logout_revokes_all_tokens_and_requests_cleanup_for_temporary_accounts(): void
+    {
+        Queue::fake([DeliverIdentityWebhook::class]);
+        [$user, $project, $client, $secret] = $this->identityFixture();
+        $user->forceFill([
+            'is_temporary' => true,
+            'demo_expires_at' => now()->addHour(),
+        ])->save();
+        $project->forceFill(['mode' => 'sandbox'])->save();
+        IdentityWebhookEndpoint::query()->create([
+            'project_id' => $project->id,
+            'url' => 'https://example-app.example.test/webhooks/identity',
+            'events' => ['identity.user.deletion_requested'],
+            'secret' => Str::random(64),
+            'secret_prefix' => 'test',
+            'status' => 'active',
+        ]);
+
+        $firstSession = $this->login($user, $project, $client, $secret);
+        $this->login($user, $project, $client, $secret);
+
+        $this->withToken($firstSession['access_token'])
+            ->postJson('/api/v1/identity/auth/logout')
+            ->assertOk();
+
+        $this->assertDatabaseHas('users', ['id' => $user->id]);
+        $this->assertDatabaseMissing('personal_access_tokens', ['tokenable_id' => $user->id]);
+        $this->assertSame(
+            0,
+            IdentityRefreshToken::query()->where('user_id', $user->id)->whereNull('revoked_at')->count(),
+        );
+        $delivery = IdentityWebhookDelivery::query()->firstOrFail();
+        $this->assertSame('identity.user.deletion_requested', $delivery->event);
+        $this->assertSame('demo_logout', $delivery->payload['data']['reason']);
+        $this->assertSame($user->id, $delivery->payload['data']['user_id']);
+        $this->assertArrayNotHasKey('email', $delivery->payload['data']);
+        Queue::assertPushed(DeliverIdentityWebhook::class, 1);
+    }
+
+    public function test_temporary_logout_erases_identity_account_when_no_consumers_are_subscribed(): void
+    {
+        [$user, $project, $client, $secret] = $this->identityFixture();
+        $user->forceFill([
+            'is_temporary' => true,
+            'demo_expires_at' => now()->addHour(),
+        ])->save();
+        $project->forceFill(['mode' => 'sandbox'])->save();
+        $session = $this->login($user, $project, $client, $secret);
+
+        $this->withToken($session['access_token'])
+            ->postJson('/api/v1/identity/auth/logout')
+            ->assertOk();
+
+        $this->assertDatabaseMissing('users', ['id' => $user->id]);
+        $this->assertDatabaseMissing('identity_refresh_tokens', ['user_id' => $user->id]);
+        $this->assertDatabaseMissing('personal_access_tokens', ['tokenable_id' => $user->id]);
+        $this->assertDatabaseCount('identity_webhook_deliveries', 0);
+    }
+
+    public function test_temporary_logout_finalizes_identity_deletion_after_consumer_acknowledges_cleanup(): void
+    {
+        Queue::fake([DeliverIdentityWebhook::class, FinalizeIdentityUserDeletion::class]);
+        [$user, $project, $client, $secret] = $this->identityFixture();
+        $user->forceFill([
+            'is_temporary' => true,
+            'demo_expires_at' => now()->addHour(),
+        ])->save();
+        $project->forceFill(['mode' => 'sandbox'])->save();
+        IdentityWebhookEndpoint::query()->create([
+            'project_id' => $project->id,
+            'url' => 'https://example-app.example.test/webhooks/identity',
+            'events' => ['identity.user.deletion_requested'],
+            'secret' => Str::random(64),
+            'secret_prefix' => 'test',
+            'status' => 'active',
+        ]);
+        $session = $this->login($user, $project, $client, $secret);
+
+        $this->withToken($session['access_token'])
+            ->postJson('/api/v1/identity/auth/logout')
+            ->assertOk();
+
+        $delivery = IdentityWebhookDelivery::query()->firstOrFail();
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://example-app.example.test/webhooks/identity' => Http::response(['received' => true]),
+        ]);
+        (new DeliverIdentityWebhook((string) $delivery->id))
+            ->handle(app(IdentityWebhookDestinationValidator::class));
+
+        $this->assertDatabaseHas('identity_webhook_deliveries', [
+            'id' => $delivery->id,
+            'status' => 'delivered',
+        ]);
+        Queue::assertPushed(FinalizeIdentityUserDeletion::class, 1);
+
+        (new FinalizeIdentityUserDeletion((string) $user->id))
+            ->handle(app(AccountDataEraserInterface::class));
+
+        $this->assertDatabaseMissing('users', ['id' => $user->id]);
     }
 
     public function test_hosted_authentication_handoff_is_client_bound_and_single_use(): void
@@ -545,8 +650,10 @@ final class IdentityAccessServiceTest extends TestCase
             ->assertJsonPath('data.identity.user.email_verified', true);
     }
 
-    public function test_sandbox_client_creates_a_temporary_identity_without_credentials(): void
+    public function test_sandbox_client_creates_a_temporary_identity_without_credentials_or_overlong_expiry(): void
     {
+        $this->freezeTime();
+        config()->set('zolta.demo.account_lifetime_minutes', 120);
         [, $project, $client, $secret] = $this->identityFixture();
         $role = IdentityProjectRole::query()->create([
             'project_id' => $project->id,
@@ -581,7 +688,7 @@ final class IdentityAccessServiceTest extends TestCase
         $temporary = User::query()->findOrFail($session['identity']['user']['id']);
         $this->assertTrue($temporary->is_temporary);
         $this->assertNotNull($temporary->email_verified_at);
-        $this->assertEqualsWithDelta(now()->addHour()->getTimestamp(), $temporary->demo_expires_at?->getTimestamp(), 5);
+        $this->assertSame(now()->addHour()->getTimestamp(), $temporary->demo_expires_at?->getTimestamp());
     }
 
     public function test_hosted_sandbox_handoff_is_bound_to_the_sandbox_client(): void

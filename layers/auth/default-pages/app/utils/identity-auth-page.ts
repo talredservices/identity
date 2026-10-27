@@ -51,6 +51,14 @@ export function identityAuthPageSet(value: unknown): string {
     : 'default'
 }
 
+export function identityAuthPageSetFromRoute(path: string, routePageSet: unknown): string {
+  const configuredPageSet = identityAuthPageSet(routePageSet)
+  if (configuredPageSet !== 'default') return configuredPageSet
+
+  const match = path.match(/^\/auth\/([^/]+)\/(?:login|register|forgot-password|reset-password|verify-email)$/)
+  return match ? identityAuthPageSet(match[1]) : configuredPageSet
+}
+
 export function identityAuthPagePath(
   screen: string,
   pageSet: unknown,

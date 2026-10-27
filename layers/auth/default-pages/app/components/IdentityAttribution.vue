@@ -1,12 +1,18 @@
 <script setup lang="ts">
-defineProps<{
+withDefaults(defineProps<{
   termsUrl?: string | null
   privacyUrl?: string | null
-}>()
+  centered?: boolean
+}>(), {
+  centered: false
+})
 </script>
 
 <template>
-  <footer class="identity-attribution">
+  <footer
+    class="identity-attribution"
+    :class="{ 'identity-attribution--centered': centered }"
+  >
     <nav
       v-if="termsUrl || privacyUrl"
       aria-label="Legal"
@@ -67,11 +73,24 @@ defineProps<{
 
 .identity-attribution-credit :deep(svg) { height: 0.85rem; width: 0.85rem; }
 
+.identity-attribution--centered {
+  align-items: center;
+  flex-direction: column;
+  gap: 0.45rem;
+  justify-content: center;
+  margin-top: 0;
+  text-align: center;
+}
+
 @media (max-width: 40rem) {
   .identity-attribution {
     align-items: flex-start;
     flex-direction: column;
     gap: 0.5rem;
+  }
+
+  .identity-attribution--centered {
+    align-items: center;
   }
 }
 </style>

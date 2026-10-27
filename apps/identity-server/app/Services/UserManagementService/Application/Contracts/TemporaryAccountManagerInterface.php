@@ -11,5 +11,7 @@ interface TemporaryAccountManagerInterface
      */
     public function provision(): array;
 
+    public function deleteOnLogout(string $userId): void;
+
     public function purgeExpired(): int;
 }

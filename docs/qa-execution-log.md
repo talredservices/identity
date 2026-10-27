@@ -100,3 +100,96 @@
 - Action: added named sandbox limiter and applied it to generic/hosted sandbox-session routes after verified local 429 collisions with context traffic. Ceiling remains 20/IP/minute shared by both routes. Public Starter was not edited.
 - Verification: focused regression set passed 3 tests and 106 assertions using isolated testing SQLite; provider/controller/test whitespace checks passed. Two affected attribute route manifests regenerated on local main Identity. Tasks instant-demo browser callback reached its protected dashboard and created a project after the fix.
 - Services/providers: existing local Identity API; no external publishing, deployment or production operation. No release build required for this PHP routing change.
+
+## 2026-10-24T20:05:18Z — Preserve consumer branding on hosted auth pages
+
+- Target: public Identity hosted-auth presentation layer; actor: interactive Codex session.
+- Action/method: kept the generic Identity header/mark on the default page set while allowing consumer-provided page-set headers to render without a second Identity mark.
+- Verification: browser smoke review of the local SaaS hosted-auth page showed one consumer-branded header; `git diff --check` passed.
+- Providers/runtime: local Identity Console only; no public image, Staging, or production deployment was performed.
+- Limitation: final end-to-end authorization remained blocked by HTTP 429 responses from the local Starter BFF during repeated authorization-intent retries.
+
+
+## 2026-10-26T05:42:13Z — Hosted auth document navigation regression
+
+- Target/root: public `identity`; actor: interactive Codex session.
+- Action: registered the Nuxt 4.6.0 document-scope patch in pnpm; kept the outgoing app alive until browser document unload, preserving head-managed styles and browser Back. The existing hosted-login pending branch renders on initial HTML while client metadata loads, with route-selected consumer branding. The entry resolver reuses its resolved application rather than fetching it twice.
+- Verification: frozen dependency installation succeeded in both existing Identity console runtimes. Both load the patched implementation. Job Tracker and SaaS entry flows reached their correct hosted login pages; Job Tracker Login → Back passed in both themes and Chrome. Targeted auth-page/server ESLint and diff checks passed. No authentication credentials were entered.
+- Runtime/providers: scoped default-daemon Nuxt restarts only; no provider changes or publication.
+- Limitations: no production build or authenticated logout test. Startup still emitted the existing Vite i18n `#components` dependency-scan warning; the tested routes rendered and worked.
+
+## 2026-10-26T21:10:29Z — Hosted auth first-frame branding
+
+- Target/root: public `identity`; actor: interactive Codex session.
+- Action: render the resolved hosted application brand in the initial HTML for hosted login/logout, and show the brand mark in the existing login pending/error card. Other auth pages retain the client-deferred metadata request.
+- Verification: local GET responses for hosted SaaS login and logout returned 200; both first HTML responses included Talred Services.com, the `saas` page set, the purple accent, and their existing transition copy. The Job Tracker login click showed its branded loading card before the existing form appeared. Targeted ESLint and `git diff --check` passed. No credentials or logout intent were submitted.
+- Runtime/providers: source is bind-mounted in the existing local Identity Console; no Docker operation, account action, or provider change was performed.
+- Limitation: authenticated logout was not repeated; verification covered its initial server-rendered response only.
+
+## 2026-10-26T21:17:37Z — Login loading-copy refinement
+
+- Target/root: public `identity`; actor: interactive Codex session.
+- Action: replaced the two repetitive loading lines with one status message, “Preparing your sign-in…”, announced politely to assistive technology.
+- Verification: fresh local SaaS login navigation displayed the single message in the first-frame accessibility tree; the existing sign-in form then loaded. A read-only first-HTML check confirmed the new text and absence of both old strings. Targeted ESLint and `git diff --check` passed.
+- Runtime/providers: existing local Identity Console only; no credentials, terms acceptance, or logout intent used. No deployment.
+
+## 2026-10-26T21:42:35Z — Show hosted brand mark above sign-in form
+
+- Target/root: public `identity`; actor: interactive Codex session.
+- Action: let consumer page-set shells opt in to rendering the hosted brand mark in the login form header while preserving default-page behavior and leaving other hosted screens unchanged.
+- Method: added the `identity-auth-show-login-brand-mark` injection contract to the shared form header and restricted it to `/auth/.../login` routes.
+- Verification: local Tasks, Job Tracker, and Starter sign-in forms rendered the configured mark immediately above “Sign in.” Targeted ESLint passed; no build or tests ran.
+- Runtime/providers: existing local Identity Console on port 3100; no runtime restart or provider changes.
+- Limitations: none for the verified local login screens.
+
+## 2026-10-26T21:59:05Z — Place sign-in attribution beneath the form
+
+- Target/root: public `identity`; actor: interactive Codex session.
+- Action: render Terms of Service, Privacy Policy, and Identity attribution beneath the login card, constrained to the form width; suppress the viewport-edge footer on login routes. Other auth screens keep their current footer placement.
+- Method: render `IdentityAttribution` within `IdentityHostedLoginPage` and retain layout-level attribution only off login routes.
+- Verification: fresh local Job Tracker and Tasks sign-in flows showed the form followed by legal links and credit below the card; Starter showed the credit below its form. Targeted ESLint and scoped `git diff --check` passed. No build or tests ran.
+- Runtime/providers: existing local Identity Console on port 3100; no restart or provider changes.
+- Limitation: the Starter login currently provides no Terms of Service or Privacy Policy URLs, so those links are absent there.
+
+## 2026-10-26T22:34:04Z — Recover expired hosted authorization flow
+
+- Target/root: public `identity`; actor: interactive Codex session.
+- Action: when a hosted sign-in flow expires, send the browser to the consumer's localized auth entry route with the original app return path, instead of constructing a nonexistent `/en/jobs/auth/login` path on Identity.
+- Method/artifacts: added `hosted-auth-restart.ts`; updated `identity-live-auth.ts`; added focused Node tests in `tests/hosted-auth-restart.test.mjs`.
+- Verification: 5 focused tests passed; scoped ESLint passed; `git diff --check` passed. In the integrated browser, the consumer entry route started a fresh Job Tracker hosted sign-in and rendered the form. No credentials were submitted.
+- Runtime/providers: existing bind-mounted local Identity Console; no Docker operation, restart, deployment, or provider change.
+- Limitation: the exact 10-minute expiration was not waited out in the shared browser session; expired-flow URL construction is covered by focused tests, and the recovery route was verified live.
+
+## 2026-10-26T23:37:14Z — Enforce demo logout cleanup and lifetime cap
+
+- Target/root: public `identity`, `/home/redouane/projects/talredservices/identity/apps/identity-server`; actor: current Codex session.
+- Action: capped temporary demo-account lifetime at 60 minutes even if configuration requests longer; temporary logout now revokes all user tokens, starts signed deletion requests, and removes Identity-owned records directly when no consumer is subscribed. Identity waits for configured consumer acknowledgements before finalizing its account. Removed email addresses from stored deletion-request payloads.
+- Verification: added focused tests for logout token revocation, direct cleanup without consumers, finalization after a consumer acknowledgement, and the 60-minute cap. Pint, PHP syntax checks, and scoped `git diff --check` passed. The focused Laravel suite was attempted but all six tests stopped before assertions because host PHP has no `pdo_sqlite` driver.
+- Runtime/providers: no runtime, provider, or deployment changes. Default-daemon inspection was denied access to the Docker socket; no Compose state changed.
+- Limitations: live provider configuration, consumer webhook subscriptions, queue health, and scheduler health were not verified. Delivery exhaustion still needs operator action, as reflected in the Talred privacy copy.
+
+## 2026-10-27T00:09:16Z — Center hosted logout transition content
+
+- Target/root: public `identity`; actor: interactive Codex session.
+- Action: group the “Signing out” card, legal links, and Identity credit in one centered logout layout. Suppress the layout-level edge footer on logout routes and keep the grouped attribution centered on narrow screens.
+- Method/artifacts: updated `identity-auth.vue`, `IdentityAttribution.vue`, and `auth/logout.vue`.
+- Verification: local logout preview with an invalid one-time intent showed the status, legal links, and credit together in the page accessibility tree; no valid user logout was triggered. Scoped ESLint, `node --test tests/hosted-auth-restart.test.mjs`, and scoped `git diff --check` passed.
+- Runtime/providers: used the existing local Identity Console on port 3100; no service restart, Docker operation, provider change, or deployment.
+- Limitation: did not complete a valid session logout or verify the pixel layout through a full browser screenshot.
+
+## 2026-10-27T00:20:48Z — Theme hosted policy consent modal per application
+
+- Target/root: public `identity`; actor: interactive Codex session.
+- Action: make the hosted policy consent dialog inherit the active application's primary palette, light/dark surface, text, and border tokens instead of falling back to Identity's global blue theme.
+- Method/artifacts: added `hosted-modal-theme.ts`, applied its variables to the teleported modal content, and added focused tests in `tests/hosted-modal-theme.test.mjs`.
+- Verification: 3 focused theme tests passed; scoped ESLint and `git diff --check` passed. The local Starter sign-in preview showed teal links and primary action with the Starter dark surfaces. Terms acceptance and demo-account creation were not submitted.
+- Runtime/providers: existing local Identity Console on port 3100; no runtime restart, Docker operation, provider change, or deployment.
+- Limitations: live visual preview covered Starter dark mode; SaaS/Tasks palettes and light mode are covered by the focused style-mapping tests.
+
+## 2026-10-27T01:34:14Z — Verify hosted sign-in branding and consent themes
+
+- Target/root: public `identity`; actor: interactive Codex session.
+- Action: rechecked local hosted sign-in for Tasks, Starter, SaaS, and Job Tracker in light and dark modes. Each page showed the configured product badge and brand mark above the sign-in heading, with policy links and Identity attribution below the form. The initial pending frame used the branded sign-in shell and “Preparing your sign-in…” status.
+- Verification: opened the Tasks consent modal in both themes and confirmed its light/dark surfaces and indigo accent follow the hosted app. Dismissed the modal without accepting terms or creating an account. Forms loaded successfully after their context request.
+- Runtime/providers: existing local Identity Console on port 3100 with consumer integration mounts; no service restart, Docker operation, provider change, or deployment.
+- Limitations: no credentials were submitted and no valid logout was exercised. No tests or build were run in this verification pass.

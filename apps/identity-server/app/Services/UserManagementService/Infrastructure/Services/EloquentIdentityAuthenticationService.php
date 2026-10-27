@@ -14,6 +14,7 @@ use App\Services\UserManagementService\Application\Contracts\Identity\Authentica
 use App\Services\UserManagementService\Application\Contracts\Identity\Authentication\SyncIdentityClientManifest;
 use App\Services\UserManagementService\Application\Contracts\Identity\Authentication\VerifyIdentityEmail;
 use App\Services\UserManagementService\Application\Contracts\OAuthGateway;
+use App\Services\UserManagementService\Application\Contracts\TemporaryAccountManagerInterface;
 use App\Services\UserManagementService\Application\Exceptions\IdentityAuthenticationException;
 use App\Services\UserManagementService\Application\Exceptions\IdentityAuthorizationException;
 use App\Services\UserManagementService\Application\Exceptions\IdentityResourceNotFoundException;
@@ -66,6 +67,7 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
         private IdentityPayloadFactory $payloads,
         private IdentityAuditRecorder $audit,
         private OAuthGateway $oauthGateway,
+        private TemporaryAccountManagerInterface $temporaryAccounts,
     ) {}
 
     public function login(
@@ -1175,6 +1177,16 @@ final readonly class EloquentIdentityAuthenticationService implements AcceptIden
     {
         $token = PersonalAccessToken::findToken($accessToken);
         if (! $token) {
+            return;
+        }
+
+        $userId = (string) $token->tokenable_id;
+        $user = User::query()->find($userId);
+
+        if ($user?->is_temporary) {
+            $this->tokens->revokeUser($userId);
+            $this->temporaryAccounts->deleteOnLogout($userId);
+
             return;
         }
 

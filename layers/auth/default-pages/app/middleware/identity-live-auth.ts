@@ -1,4 +1,6 @@
 import type { IdentityAuthenticationExperience } from '../../../shared/types/identity-auth'
+import { identityAuthPageSetFromRoute } from '../utils/identity-auth-page'
+import { hostedAuthRestartAction, hostedAuthRestartUrl } from '../utils/hosted-auth-restart'
 
 type HostedApplicationMetadata = {
   application: {
@@ -12,19 +14,6 @@ function isUnauthorized(error: unknown): boolean {
     .some(status => status === 401 || status === '401')
 }
 
-function hostedAuthRestartAction(path: string): string {
-  const screen = path.split('/').filter(Boolean).at(-1)
-  return screen === 'register' ? 'signup' : screen === 'forgot-password' ? 'forgot-password' : 'login'
-}
-
-function identityAuthPageSetFromRoute(path: string, routePageSet: unknown): string {
-  const configuredPageSet = identityAuthPageSet(routePageSet)
-  if (configuredPageSet !== 'default') return configuredPageSet
-
-  const match = path.match(/^\/auth\/([^/]+)\/(?:login|register|forgot-password|reset-password|verify-email)$/)
-  return match ? identityAuthPageSet(match[1]) : configuredPageSet
-}
-
 async function restartHostedAuthorization(
   requestFetch: ReturnType<typeof useRequestFetch>,
   to: { path: string, query: Record<string, unknown> },
@@ -33,15 +22,13 @@ async function restartHostedAuthorization(
   const metadata = await requestFetch<HostedApplicationMetadata>('/api/hosted-auth/application', {
     query: { application }
   })
-  const target = new URL(metadata.application.returnUrl)
-  const identityOrigin = useRequestURL().origin
-  if (target.origin === identityOrigin) return null
 
-  target.pathname = `${target.pathname.replace(/\/$/, '')}/auth/${hostedAuthRestartAction(to.path)}`
-  target.search = ''
-  const redirect = typeof to.query.redirect === 'string' ? to.query.redirect : ''
-  if (redirect.startsWith('/') && !redirect.startsWith('//')) target.searchParams.set('redirect', redirect)
-  return `${target.pathname}${target.search}`
+  return hostedAuthRestartUrl({
+    returnUrl: metadata.application.returnUrl,
+    identityOrigin: useRequestURL().origin,
+    action: hostedAuthRestartAction(to.path),
+    redirect: to.query.redirect
+  })
 }
 
 export default defineNuxtRouteMiddleware(async (to) => {
@@ -72,6 +59,13 @@ export default defineNuxtRouteMiddleware(async (to) => {
       }, { external: true })
     }
   }
+
+  // Keep the hosted login shell renderable on the first server response. The
+  // login page owns the same context request and already renders its pending
+  // state; the client middleware still performs the authorization recovery
+  // check after the branded shell has painted.
+  const screen = to.path.split('/').filter(Boolean).at(-1)
+  if (import.meta.server && application && state && screen === 'login') return
 
   let experience: IdentityAuthenticationExperience
   try {
