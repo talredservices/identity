@@ -1,0 +1,99 @@
+name: Staging Identity Console
+
+on:
+  workflow_dispatch:
+    inputs:
+      talred_commit:
+        description: Full Talred commit providing the Job Tracker auth layer
+        required: true
+        type: string
+      starter_commit:
+        description: Full Starter commit providing Starter, SaaS, and Projects auth layers
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: staging-identity-console
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate source revisions and choose a unique tag
+        id: release
+        env:
+          TALRED_COMMIT: ${{ inputs.talred_commit }}
+          STARTER_COMMIT: ${{ inputs.starter_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$TALRED_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$STARTER_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+          echo "tag=staging-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          repository: talredservices/talred
+          ref: ${{ inputs.talred_commit }}
+          path: .build-contexts/talred
+
+      - uses: actions/checkout@v7
+        with:
+          repository: talredservices/talred-starter
+          ref: ${{ inputs.starter_commit }}
+          path: .build-contexts/starter
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build and publish composed staging console
+        id: publish
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/identity-console/staging-integrations.Dockerfile
+          build-contexts: |
+            talred=./.build-contexts/talred
+            starter=./.build-contexts/starter
+          build-args: |
+            IDENTITY_HOSTED_AUTH_INTEGRATIONS=/app/consumer-integrations/starter,/app/consumer-integrations/talred
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.talred.identity.integration.talred.revision=${{ inputs.talred_commit }}
+            org.talred.identity.integration.starter.revision=${{ inputs.starter_commit }}
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/identity-console:${{ steps.release.outputs.tag }}
+
+      - name: Record immutable image reference
+        env:
+          IMAGE_DIGEST: ${{ steps.publish.outputs.digest }}
+          IMAGE_TAG: ${{ steps.release.outputs.tag }}
+          IDENTITY_COMMIT: ${{ github.sha }}
+          TALRED_COMMIT: ${{ inputs.talred_commit }}
+          STARTER_COMMIT: ${{ inputs.starter_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          {
+            echo "### Staging Identity Console image"
+            echo
+            echo "- Tag: `ghcr.io/${GITHUB_REPOSITORY_OWNER}/identity-console:${IMAGE_TAG}`"
+            echo "- Immutable reference: `ghcr.io/${GITHUB_REPOSITORY_OWNER}/identity-console@${IMAGE_DIGEST}`"
+            echo "- Identity source: `${IDENTITY_COMMIT}`"
+            echo "- Talred auth layer: `${TALRED_COMMIT}`"
+            echo "- Starter auth layers: `${STARTER_COMMIT}`"
+          } >> "$GITHUB_STEP_SUMMARY"
