@@ -1,5 +1,13 @@
 # QA execution log
 
+## 2026-10-27T03:44:13Z — Full local release guard for hosted auth and demo cleanup
+
+- Target/root: public `identity`; actor: current Codex session; release branch `codex/full-local-staging-20261026`.
+- Action/method: corrected temporary logout feature fixtures to use the supported sandbox-session route; documented the contract in CI failure prevention. Used PHP 8.5's matching SQLite modules extracted under `/tmp` for local validation; no host package was installed.
+- Verification: full `./scripts/ci pre-push` passed on Node 24: frozen install, ESLint, Nuxt typecheck and production build, Composer validation, Pint, all 118 PHP tests (977 assertions), DCO and tracked-secret scans, Compose config validation, and production dependency/security audits. `git diff --check` passed. The build wrapper restored the same 16 running Compose services on Docker context `default`.
+- Runtime/providers: local stack only; no credentials, accounts, or staging resources changed. No branch was pushed and nothing was deployed.
+- Limitations: GitHub CLI authentication is currently invalid, so remote publication and staging promotion remain blocked pending a fresh login.
+
 ## 2026-10-17T21:59:32Z — Live hosted policy-consent flow
 
 - **Target:** Local Job Tracker hosted login (`localhost:3100`), Identity API/MySQL, and the Identity/Talred integration source; actor: current Codex session.

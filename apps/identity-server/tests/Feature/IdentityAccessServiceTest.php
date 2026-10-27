@@ -30,6 +30,7 @@ use App\Services\UserManagementService\Infrastructure\Models\Eloquent\IdentityWe
 use App\Services\UserManagementService\Infrastructure\Models\Eloquent\IdentityWebhookEndpoint;
 use App\Services\UserManagementService\Infrastructure\Models\Eloquent\User;
 use App\Services\UserManagementService\Infrastructure\Notifications\ResetIdentityPassword;
+use App\Services\UserManagementService\Infrastructure\Services\Identity\IdentityTokenManager;
 use App\Services\UserManagementService\Infrastructure\Services\Identity\IdentityWebhookDestinationValidator;
 use App\Services\UserManagementService\Infrastructure\Webhooks\IdentityWebhookPublisher;
 use Illuminate\Database\Schema\Blueprint;
@@ -206,11 +207,7 @@ final class IdentityAccessServiceTest extends TestCase
     public function test_logout_revokes_all_tokens_and_requests_cleanup_for_temporary_accounts(): void
     {
         Queue::fake([DeliverIdentityWebhook::class]);
-        [$user, $project, $client, $secret] = $this->identityFixture();
-        $user->forceFill([
-            'is_temporary' => true,
-            'demo_expires_at' => now()->addHour(),
-        ])->save();
+        [, $project, $client, $secret] = $this->identityFixture();
         $project->forceFill(['mode' => 'sandbox'])->save();
         IdentityWebhookEndpoint::query()->create([
             'project_id' => $project->id,
@@ -221,8 +218,16 @@ final class IdentityAccessServiceTest extends TestCase
             'status' => 'active',
         ]);
 
-        $firstSession = $this->login($user, $project, $client, $secret);
-        $this->login($user, $project, $client, $secret);
+        $firstSession = $this->postJson('/api/v1/identity/auth/sandbox-session', [
+            'client_id' => $client->id,
+            'client_secret' => $secret,
+        ])->assertCreated()->json('data');
+        $user = User::query()->findOrFail($firstSession['identity']['user']['id']);
+        $membership = IdentityProjectMembership::query()
+            ->where('project_id', $project->id)
+            ->where('user_id', $user->id)
+            ->firstOrFail();
+        app(IdentityTokenManager::class)->issuePair($user, $project, $client, $membership);
 
         $this->withToken($firstSession['access_token'])
             ->postJson('/api/v1/identity/auth/logout')
@@ -244,13 +249,13 @@ final class IdentityAccessServiceTest extends TestCase
 
     public function test_temporary_logout_erases_identity_account_when_no_consumers_are_subscribed(): void
     {
-        [$user, $project, $client, $secret] = $this->identityFixture();
-        $user->forceFill([
-            'is_temporary' => true,
-            'demo_expires_at' => now()->addHour(),
-        ])->save();
+        [, $project, $client, $secret] = $this->identityFixture();
         $project->forceFill(['mode' => 'sandbox'])->save();
-        $session = $this->login($user, $project, $client, $secret);
+        $session = $this->postJson('/api/v1/identity/auth/sandbox-session', [
+            'client_id' => $client->id,
+            'client_secret' => $secret,
+        ])->assertCreated()->json('data');
+        $user = User::query()->findOrFail($session['identity']['user']['id']);
 
         $this->withToken($session['access_token'])
             ->postJson('/api/v1/identity/auth/logout')
@@ -265,11 +270,7 @@ final class IdentityAccessServiceTest extends TestCase
     public function test_temporary_logout_finalizes_identity_deletion_after_consumer_acknowledges_cleanup(): void
     {
         Queue::fake([DeliverIdentityWebhook::class, FinalizeIdentityUserDeletion::class]);
-        [$user, $project, $client, $secret] = $this->identityFixture();
-        $user->forceFill([
-            'is_temporary' => true,
-            'demo_expires_at' => now()->addHour(),
-        ])->save();
+        [, $project, $client, $secret] = $this->identityFixture();
         $project->forceFill(['mode' => 'sandbox'])->save();
         IdentityWebhookEndpoint::query()->create([
             'project_id' => $project->id,
@@ -279,7 +280,11 @@ final class IdentityAccessServiceTest extends TestCase
             'secret_prefix' => 'test',
             'status' => 'active',
         ]);
-        $session = $this->login($user, $project, $client, $secret);
+        $session = $this->postJson('/api/v1/identity/auth/sandbox-session', [
+            'client_id' => $client->id,
+            'client_secret' => $secret,
+        ])->assertCreated()->json('data');
+        $user = User::query()->findOrFail($session['identity']['user']['id']);
 
         $this->withToken($session['access_token'])
             ->postJson('/api/v1/identity/auth/logout')

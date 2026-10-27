@@ -92,3 +92,12 @@ screens so the first frame uses the application's logo, page set, and colors;
 otherwise logout can briefly show Identity's default brand before client data
 loads. Keep unrelated auth screens non-blocking. Verify first HTML for both
 routes using a hosted app with a non-default page set and accent.
+
+## Temporary logout tests must create sandbox sessions through the sandbox route
+
+The password login endpoint intentionally rejects projects in sandbox mode.
+Feature tests for temporary-account logout must create a sandbox session with
+`POST /api/v1/identity/auth/sandbox-session`, then use the returned temporary
+user ID for cleanup assertions. To verify that logout revokes multiple token
+families for one temporary account, issue the additional token pair for that
+same user; creating another sandbox session provisions a different account.
