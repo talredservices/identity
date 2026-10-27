@@ -1,0 +1,5 @@
+diff --git a/dist/app/composables/router.js b/dist/app/composables/router.js
+--- a/dist/app/composables/router.js
++++ b/dist/app/composables/router.js
+@@ -198,1 +197,0 @@
+-		nuxtApp._scope.stop();

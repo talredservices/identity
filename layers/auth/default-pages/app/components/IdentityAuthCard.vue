@@ -1,15 +1,19 @@
 <script setup lang="ts">
-defineProps<{
+const props = withDefaults(defineProps<{
   title: string
   description: string
-}>()
+  showBrand?: boolean
+}>(), {
+  showBrand: false
+})
 </script>
 
 <template>
   <section class="identity-auth-card">
     <IdentityAuthFormHeader
-      :title="title"
-      :description="description"
+      :title="props.title"
+      :description="props.description"
+      :show-brand="props.showBrand"
     />
     <slot />
   </section>

@@ -15,6 +15,8 @@ use Zolta\Domain\ValueObjects\UserId;
 
 final readonly class EloquentTemporaryAccountManager implements TemporaryAccountManagerInterface
 {
+    private const MAX_ACCOUNT_LIFETIME_MINUTES = 60;
+
     public function __construct(
         private AccountDataEraserInterface $dataEraser,
         private IdentityWebhookPublisher $webhooks,
@@ -30,7 +32,11 @@ final readonly class EloquentTemporaryAccountManager implements TemporaryAccount
             $id = (string) Str::uuid();
             $suffix = Str::lower(Str::random(8));
             $password = 'Demo!'.Str::random(20);
-            $expiresAt = now()->addMinutes((int) config('zolta.demo.account_lifetime_minutes'));
+            $lifetimeMinutes = min(
+                self::MAX_ACCOUNT_LIFETIME_MINUTES,
+                max(1, (int) config('zolta.demo.account_lifetime_minutes')),
+            );
+            $expiresAt = now()->addMinutes($lifetimeMinutes);
 
             User::query()->create([
                 'id' => $id,
@@ -49,6 +55,27 @@ final readonly class EloquentTemporaryAccountManager implements TemporaryAccount
                 'password' => $password,
                 'expires_at' => $expiresAt->toAtomString(),
             ];
+        });
+    }
+
+    public function deleteOnLogout(string $userId): void
+    {
+        DB::transaction(function () use ($userId): void {
+            $user = User::query()->lockForUpdate()->find($userId);
+
+            if (! $user || ! $user->is_temporary) {
+                return;
+            }
+
+            if ($this->webhooks->requestUserDeletion(
+                (string) $user->id,
+                'demo_logout',
+            )) {
+                return;
+            }
+
+            $this->dataEraser->erase(new UserId((string) $user->id), (string) $user->email);
+            $user->delete();
         });
     }
 

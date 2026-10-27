@@ -260,12 +260,10 @@ function publicApplicationMetadata(event: H3Event, application: HostedApplicatio
   }
 }
 
-export async function identityHostedAuthPageRoute(
-  event: H3Event,
-  applicationKey: string,
+export function identityHostedAuthPageRoute(
+  application: HostedApplication,
   screen: 'login' | 'register' | 'forgot-password' | 'reset-password' | 'verify-email'
-): Promise<string> {
-  const application = await identityHostedApplication(event, applicationKey)
+): string {
   const pageSet = application.presentation.pageSet
   const prefix = pageSet !== 'default' ? `/auth/${encodeURIComponent(pageSet)}` : '/auth'
   return `${prefix}/${screen}`
@@ -519,9 +517,10 @@ export async function establishIdentityHostedAuthorization(
   applicationKey: string,
   intent: string,
   state: string
-): Promise<void> {
+): Promise<HostedApplication> {
   const application = await identityHostedApplication(event, applicationKey)
   await hostedAuthorization(event, application, intent, state)
+  return application
 }
 
 async function requireHostedAuthorization(
@@ -836,7 +835,7 @@ export async function identityHostedLogin(
   if (requiresEmailVerification(identity)) {
     const session = await flowSession(event)
     await session.update({ application: applicationKey, state: assertState(state), identity })
-    const verificationRoute = await identityHostedAuthPageRoute(event, applicationKey, 'verify-email')
+    const verificationRoute = identityHostedAuthPageRoute(application, 'verify-email')
     const verificationUrl = new URL(verificationRoute, getRequestURL(event).origin)
     verificationUrl.searchParams.set('application', applicationKey)
     verificationUrl.searchParams.set('state', state)

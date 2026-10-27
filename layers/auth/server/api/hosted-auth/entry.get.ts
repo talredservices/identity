@@ -22,14 +22,14 @@ export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'referrer-policy', 'no-referrer')
 
   const query = await getValidatedQuery(event, schema.parse)
-  await establishIdentityHostedAuthorization(
+  const application = await establishIdentityHostedAuthorization(
     event,
     query.application,
     query.intent,
     query.state
   )
 
-  const pageRoute = await identityHostedAuthPageRoute(event, query.application, query.screen)
+  const pageRoute = identityHostedAuthPageRoute(application, query.screen)
   const redirect = new URL(pageRoute, getRequestURL(event).origin)
   redirect.searchParams.set('application', query.application)
   redirect.searchParams.set('state', query.state)

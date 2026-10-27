@@ -1,6 +1,11 @@
 <script setup lang="ts">
+import type { ComputedRef } from 'vue'
+
 definePageMeta({ layout: 'identity-auth' })
 
+const brand = inject<ComputedRef<{
+  authentication: { termsUrl: string | null, privacyUrl: string | null }
+} | null>>('identity-auth-brand', computed(() => null))
 const config = useRuntimeConfig()
 const route = useRoute()
 const mutate = useIdentityMutation()
@@ -34,15 +39,36 @@ onMounted(async () => {
 </script>
 
 <template>
-  <IdentityAuthCard
-    title="Signing out"
-    description="Closing your application session."
-  >
-    <p
-      v-if="errorMessage"
-      class="identity-auth-error"
+  <div class="identity-auth-page identity-auth-logout-page">
+    <IdentityAuthCard
+      title="Signing out"
+      description="Closing your application session."
+      show-brand
     >
-      {{ errorMessage }}
-    </p>
-  </IdentityAuthCard>
+      <p
+        v-if="errorMessage"
+        class="identity-auth-error"
+      >
+        {{ errorMessage }}
+      </p>
+    </IdentityAuthCard>
+
+    <IdentityAttribution
+      :terms-url="brand?.authentication.termsUrl"
+      :privacy-url="brand?.authentication.privacyUrl"
+      centered
+    />
+  </div>
 </template>
+
+<style scoped>
+.identity-auth-logout-page {
+  display: grid;
+  gap: 0.75rem;
+  width: min(100%, 28rem);
+}
+
+.identity-auth-logout-page :deep(.identity-auth-card) {
+  width: 100%;
+}
+</style>

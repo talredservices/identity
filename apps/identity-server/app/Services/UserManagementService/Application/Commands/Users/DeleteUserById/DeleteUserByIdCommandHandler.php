@@ -25,7 +25,7 @@ final readonly class DeleteUserByIdCommandHandler
 
         if ($user !== null) {
             $email = (string) $user->getEmail()->get('address');
-            if ($this->lifecycle->requestUserDeletion((string) $user->getId()->get('value'), $email)) {
+            if ($this->lifecycle->requestUserDeletion((string) $user->getId()->get('value'))) {
                 return Result::success(['message' => 'Account deletion is waiting for connected applications to erase user data.']);
             }
             $this->accountDataEraser->erase(

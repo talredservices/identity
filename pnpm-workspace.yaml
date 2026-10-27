@@ -47,4 +47,5 @@ overrides:
   '@tiptap/pm': ^3.31.2
 
 patchedDependencies:
+  'nuxt@4.6.0': patches/nuxt-preserve-document-scope.patch
   '@nuxt/devtools@3.4.2': patches/nuxt-devtools-simple-git.patch

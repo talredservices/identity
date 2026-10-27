@@ -1,5 +1,15 @@
 # CI failure prevention
 
+## 2026-10-26 — Preserve the document scope during hosted-auth redirects
+
+Nuxt 4.6.0 stops its app scope before an external `navigateTo` changes the
+document URL. That disposes head-managed theme styles before the old document
+leaves, and Back can restore the stopped application from the browser cache.
+Keep the version-scoped `patches/nuxt-preserve-document-scope.patch` and pnpm
+lock hash synchronized. It removes only the premature scope stop; browser
+document unload performs teardown. Verify hosted login/logout and Back in
+both themes before removing this patch on a Nuxt upgrade.
+
 ## Owner recovery key and Laravel configuration
 
 The owner-recovery feature test failed in a workspace with a configured
@@ -73,3 +83,21 @@ hostname for both the admin console and hosted authentication pages. Treat
 host separation as enabled only when the normalized public and admin hosts are
 both configured and distinct. Equal host values must keep both route families
 available; otherwise the host middleware returns 404 for both.
+
+## Hosted login/logout first-frame branding
+
+Hosted login and logout pages receive the application key in the URL. Resolve
+the public application presentation for the initial HTML on those two entry
+screens so the first frame uses the application's logo, page set, and colors;
+otherwise logout can briefly show Identity's default brand before client data
+loads. Keep unrelated auth screens non-blocking. Verify first HTML for both
+routes using a hosted app with a non-default page set and accent.
+
+## Temporary logout tests must create sandbox sessions through the sandbox route
+
+The password login endpoint intentionally rejects projects in sandbox mode.
+Feature tests for temporary-account logout must create a sandbox session with
+`POST /api/v1/identity/auth/sandbox-session`, then use the returned temporary
+user ID for cleanup assertions. To verify that logout revokes multiple token
+families for one temporary account, issue the additional token pair for that
+same user; creating another sandbox session provisions a different account.

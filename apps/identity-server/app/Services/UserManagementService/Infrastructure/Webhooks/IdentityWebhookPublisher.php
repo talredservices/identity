@@ -13,17 +13,18 @@ use Illuminate\Support\Str;
 
 final class IdentityWebhookPublisher implements IdentityLifecyclePublisherInterface
 {
-    public function requestUserDeletion(string $userId, string $email): bool
-    {
+    public function requestUserDeletion(
+        string $userId,
+        string $reason = 'account_deletion_requested',
+    ): bool {
         $deliveries = 0;
         IdentityProjectMembership::query()
             ->where('user_id', $userId)
             ->pluck('project_id')
-            ->each(function (string $projectId) use ($userId, $email, &$deliveries): void {
+            ->each(function (string $projectId) use ($userId, $reason, &$deliveries): void {
                 $deliveries += $this->publish($projectId, 'identity.user.deletion_requested', [
                     'user_id' => $userId,
-                    'email' => $email,
-                    'reason' => 'account_deletion_requested',
+                    'reason' => $reason,
                 ]);
             });
 
