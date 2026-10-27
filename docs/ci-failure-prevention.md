@@ -1,5 +1,14 @@
 # CI failure prevention
 
+## 2026-10-27 — Keep private hosted-auth source out of public Identity images
+
+The shared Identity Console package is anonymously pullable. Talred's hosted
+auth integration is owned by a private repository, so do not publish a
+composed staging Console into the public `identity-console` package. Talred's
+private repository owns that composition workflow and publishes its image to a
+private staging package. Keep this repository limited to the reusable
+composition Dockerfile and shared Identity source.
+
 ## 2026-10-26 — Preserve the document scope during hosted-auth redirects
 
 Nuxt 4.6.0 stops its app scope before an external `navigateTo` changes the
